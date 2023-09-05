@@ -12,7 +12,7 @@ import (
 
 type Expand struct {
 	Service interface {
-		Expand(ctx context.Context, shortend string) (string, error)
+		Expand(ctx context.Context, shortened string) (string, error)
 	}
 }
 
