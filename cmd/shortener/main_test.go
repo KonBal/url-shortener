@@ -47,8 +47,8 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, nil)
 			w := httptest.NewRecorder()
-			h := operation.Shorten{Service: shortener{shortened: tt.want.shortURL}}
-			h.ServeHTTP(w, request)
+			h := operation.ShortenHandle(shortener{shortened: tt.want.shortURL})
+			h(w, request)
 
 			result := w.Result()
 
@@ -100,8 +100,9 @@ func TestExpandHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tt.request, nil)
 			w := httptest.NewRecorder()
-			h := operation.Expand{Service: expander{expanded: tt.want.location}}
-			h.ServeHTTP(w, request)
+
+			h := operation.ExpandHandle(expander{expanded: tt.want.location})
+			h(w, request)
 
 			result := w.Result()
 			err := result.Body.Close()

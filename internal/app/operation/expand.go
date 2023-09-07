@@ -5,59 +5,32 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/KonBal/url-shortener/internal/app/storage"
+	"github.com/go-chi/chi/v5"
 )
 
-type Expand struct {
-	Service interface {
-		Expand(ctx context.Context, shortened string) (string, error)
+func ExpandHandle(e interface {
+	Expand(ctx context.Context, shortened string) (string, error)
+}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		shortened := chi.URLParam(r, "short")
+		ctx := r.Context()
+		url, err := e.Expand(ctx, shortened)
+
+		switch {
+		case errors.Is(err, ErrNotFound):
+			logError(r, err)
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		case err != nil:
+			logError(r, err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Location", url)
+		w.WriteHeader(http.StatusTemporaryRedirect)
 	}
-}
-
-func (o Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		logError(req, fmt.Errorf("expected method GET, got %v", req.Method))
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-	encoded, err := retrieveID(req.URL.Path)
-	if err != nil {
-		logError(req, err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
-
-	ctx := req.Context()
-
-	url, err := o.Service.Expand(ctx, encoded)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		logError(req, err)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-	case err != nil:
-		logError(req, err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("Location", url)
-	w.WriteHeader(http.StatusTemporaryRedirect)
-}
-
-func retrieveID(url string) (string, error) {
-	if url[len(url)-1] == '/' {
-		url = url[:len(url)-1]
-	}
-
-	sp := strings.Split(url, "/")
-	if len(sp) < 2 {
-		return "", fmt.Errorf("id is not found in url")
-	}
-
-	return sp[1], nil
 }
 
 type Expander struct {
