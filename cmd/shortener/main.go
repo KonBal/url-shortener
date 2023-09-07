@@ -8,6 +8,7 @@ import (
 	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
+	"github.com/go-chi/chi/v5"
 )
 
 type Host struct {
@@ -25,40 +26,27 @@ func main() {
 		port: 8080,
 	}
 
-	mux := http.NewServeMux()
+	router := chi.NewRouter()
 
 	c := base62.Encoder{}
 	s := storage.NewInMemory()
 	idgen := idgenerator.New()
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		var o http.Handler
+	router.Post("/",
+		operation.ShortenHandle(operation.Shortener{
+			Encoder:      c,
+			Storage:      s,
+			ShortURLHost: h,
+			IDGen:        idgen,
+		}))
 
-		switch r.Method {
-		case http.MethodGet:
-			o = operation.Expand{
-				Service: operation.Expander{
-					Decoder: c,
-					Storage: s,
-				},
-			}
-		case http.MethodPost:
-			o = operation.Shorten{
-				Service: operation.Shortener{
-					Encoder:      c,
-					Storage:      s,
-					ShortURLHost: h,
-					IDGen:        idgen,
-				},
-			}
-		}
+	router.Get("/{short}",
+		operation.ExpandHandle(operation.Expander{
+			Decoder: c,
+			Storage: s,
+		}))
 
-		if o != nil {
-			o.ServeHTTP(w, r)
-		}
-	})
-
-	err := http.ListenAndServe(`:8080`, mux)
+	err := http.ListenAndServe(`:8080`, router)
 	if err != nil {
 		panic(err)
 	}
