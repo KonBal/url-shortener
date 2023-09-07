@@ -28,13 +28,17 @@ func TestShortenHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		request string
-		want    want
+		name         string
+		request      string
+		shortURLHost string
+		shortener    shortener
+		want         want
 	}{
 		{
-			name:    "correct",
-			request: "/",
+			name:         "correct",
+			request:      "/",
+			shortURLHost: "localhost:8080",
+			shortener:    shortener{shortened: "abcde"},
 			want: want{
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
@@ -47,7 +51,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, nil)
 			w := httptest.NewRecorder()
-			h := operation.ShortenHandle(shortener{shortened: tt.want.shortURL})
+			h := operation.ShortenHandle(tt.shortURLHost, tt.shortener)
 			h(w, request)
 
 			result := w.Result()
@@ -82,13 +86,15 @@ func TestExpandHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		request string
-		want    want
+		name     string
+		request  string
+		expander expander
+		want     want
 	}{
 		{
-			name:    "correct",
-			request: "http://localhost:8080/abcde",
+			name:     "correct",
+			request:  "http://localhost:8080/abcde",
+			expander: expander{expanded: "http://practicum.yandex.ru"},
 			want: want{
 				location:   "http://practicum.yandex.ru",
 				statusCode: http.StatusTemporaryRedirect,
@@ -101,7 +107,7 @@ func TestExpandHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tt.request, nil)
 			w := httptest.NewRecorder()
 
-			h := operation.ExpandHandle(expander{expanded: tt.want.location})
+			h := operation.ExpandHandle(tt.expander)
 			h(w, request)
 
 			result := w.Result()
