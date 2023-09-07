@@ -1,30 +1,26 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/KonBal/url-shortener/internal/app/base62"
+	"github.com/KonBal/url-shortener/internal/app/config"
 	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 	"github.com/go-chi/chi/v5"
 )
 
-type Host struct {
-	addr string
-	port int
-}
-
-func (h Host) Address() string {
-	return fmt.Sprintf("%s:%d", h.addr, h.port)
-}
-
 func main() {
-	h := Host{
-		addr: `http://localhost`,
-		port: 8080,
+	config.Parse()
+
+	if err := run(); err != nil {
+		panic(err)
 	}
+}
+
+func run() error {
+	opt := config.Get()
 
 	router := chi.NewRouter()
 
@@ -33,11 +29,10 @@ func main() {
 	idgen := idgenerator.New()
 
 	router.Post("/",
-		operation.ShortenHandle(operation.Shortener{
-			Encoder:      c,
-			Storage:      s,
-			ShortURLHost: h,
-			IDGen:        idgen,
+		operation.ShortenHandle(opt.ShortURLHostAddress, operation.Shortener{
+			Encoder: c,
+			Storage: s,
+			IDGen:   idgen,
 		}))
 
 	router.Get("/{short}",
@@ -46,8 +41,5 @@ func main() {
 			Storage: s,
 		}))
 
-	err := http.ListenAndServe(`:8080`, router)
-	if err != nil {
-		panic(err)
-	}
+	return http.ListenAndServe(opt.HostAddress, router)
 }

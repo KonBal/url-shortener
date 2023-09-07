@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
@@ -15,7 +16,7 @@ type Shorten struct {
 	}
 }
 
-func ShortenHandle(s interface {
+func ShortenHandle(shortURLHost string, s interface {
 	Shorten(ctx context.Context, url string) (string, error)
 }) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -36,9 +37,14 @@ func ShortenHandle(s interface {
 			return
 		}
 
+		sHost := shortURLHost
+		if !strings.Contains(sHost, "//") {
+			sHost = "http://" + sHost
+		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(short))
+		w.Write([]byte(fmt.Sprintf("%s/%s", sHost, short)))
 	}
 }
 
@@ -46,11 +52,8 @@ type Shortener struct {
 	Encoder interface {
 		Encode(v uint64) string
 	}
-	Storage      storage.Storage
-	ShortURLHost interface {
-		Address() string
-	}
-	IDGen interface {
+	Storage storage.Storage
+	IDGen   interface {
 		Next() uint64
 	}
 }
@@ -65,7 +68,7 @@ func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
 
 	encoded := s.Encoder.Encode(id)
 
-	return fmt.Sprintf("%s/%s", s.ShortURLHost.Address(), encoded), nil
+	return encoded, nil
 }
 
 func (s Shortener) findFreeID() uint64 {
