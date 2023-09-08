@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
@@ -15,7 +17,8 @@ func main() {
 	config.Parse()
 
 	if err := run(); err != nil {
-		panic(err)
+		log.Fatalf("main: unexpected error: %v", err)
+		os.Exit(1)
 	}
 }
 
@@ -29,7 +32,7 @@ func run() error {
 	idgen := idgenerator.New()
 
 	router.Post("/",
-		operation.ShortenHandle(opt.ShortURLHostAddress, operation.Shortener{
+		operation.ShortenHandle(opt.BaseURL, operation.Shortener{
 			Encoder: c,
 			Storage: s,
 			IDGen:   idgen,
@@ -41,5 +44,5 @@ func run() error {
 			Storage: s,
 		}))
 
-	return http.ListenAndServe(opt.HostAddress, router)
+	return http.ListenAndServe(opt.ServerAddress, router)
 }

@@ -16,13 +16,13 @@ type Shorten struct {
 	}
 }
 
-func ShortenHandle(shortURLHost string, s interface {
+func ShortenHandle(baseURL string, s interface {
 	Shorten(ctx context.Context, url string) (string, error)
 }) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			logError(r, err)
+			logError(r, fmt.Errorf("read request body: %w", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
@@ -37,14 +37,14 @@ func ShortenHandle(shortURLHost string, s interface {
 			return
 		}
 
-		sHost := shortURLHost
-		if !strings.Contains(sHost, "//") {
-			sHost = "http://" + sHost
+		host := baseURL
+		if !strings.Contains(host, "//") {
+			host = "http://" + host
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(fmt.Sprintf("%s/%s", sHost, short)))
+		w.Write([]byte(fmt.Sprintf("%s/%s", host, short)))
 	}
 }
 
@@ -63,7 +63,7 @@ func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
 
 	err := s.Storage.Set(id, url)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("shorten: failed to save ID: %v", err)
 	}
 
 	encoded := s.Encoder.Encode(id)

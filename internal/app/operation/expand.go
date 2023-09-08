@@ -22,9 +22,11 @@ func ExpandHandle(e interface {
 		case errors.Is(err, ErrNotFound):
 			logError(r, err)
 			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
 		case err != nil:
 			logError(r, err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -43,7 +45,7 @@ type Expander struct {
 func (r Expander) Expand(ctx context.Context, shortened string) (string, error) {
 	ID, err := r.Decoder.Decode(shortened)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("expand: failed to decode: %w", err)
 	}
 
 	url, ok := r.Storage.Get(ID)
