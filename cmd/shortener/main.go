@@ -8,9 +8,11 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
 	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
+	"github.com/KonBal/url-shortener/internal/app/logging"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -27,22 +29,32 @@ func run() error {
 
 	router := chi.NewRouter()
 
+	baseLogger, err := zap.NewDevelopment()
+	if err != nil {
+		return err
+	}
+	defer baseLogger.Sync()
+
+	logger := baseLogger.Sugar()
+
+	logged := logging.Handler(logger)
+
 	c := base62.Encoder{}
 	s := storage.NewInMemory()
 	idgen := idgenerator.New()
 
 	router.Post("/",
-		operation.ShortenHandle(opt.BaseURL, operation.Shortener{
+		logged(operation.ShortenHandle(opt.BaseURL, operation.Shortener{
 			Encoder: c,
 			Storage: s,
 			IDGen:   idgen,
-		}))
+		})))
 
 	router.Get("/{short}",
-		operation.ExpandHandle(operation.Expander{
+		logged(operation.ExpandHandle(operation.Expander{
 			Decoder: c,
 			Storage: s,
-		}))
+		})))
 
 	return http.ListenAndServe(opt.ServerAddress, router)
 }
