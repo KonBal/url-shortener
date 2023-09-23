@@ -10,7 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func ExpandHandle(e interface {
+func ExpandHandle(logger interface {
+	Errorf(template string, args ...interface{})
+}, e interface {
 	Expand(ctx context.Context, shortened string) (string, error)
 }) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -20,11 +22,11 @@ func ExpandHandle(e interface {
 
 		switch {
 		case errors.Is(err, ErrNotFound):
-			logError(r, err)
+			logError(logger, r, err)
 			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		case err != nil:
-			logError(r, err)
+			logError(logger, r, err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
