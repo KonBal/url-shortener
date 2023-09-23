@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +32,7 @@ func TestShortenHandler(t *testing.T) {
 	tests := []struct {
 		name         string
 		request      string
+		body         string
 		shortURLHost string
 		shortener    shortener
 		want         want
@@ -37,6 +40,7 @@ func TestShortenHandler(t *testing.T) {
 		{
 			name:         "correct",
 			request:      "/",
+			body:         "abcde",
 			shortURLHost: "localhost:8080",
 			shortener:    shortener{shortened: "abcde"},
 			want: want{
@@ -49,7 +53,7 @@ func TestShortenHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, tt.request, nil)
+			request := httptest.NewRequest(http.MethodPost, tt.request, bytes.NewBuffer([]byte(tt.body)))
 			w := httptest.NewRecorder()
 			h := operation.ShortenHandle(tt.shortURLHost, tt.shortener)
 			h(w, request)
@@ -67,6 +71,67 @@ func TestShortenHandler(t *testing.T) {
 			shortened := string(body)
 
 			assert.Equal(t, tt.want.shortURL, shortened)
+		})
+	}
+}
+
+func TestShortenFromJSONHandler(t *testing.T) {
+	type want struct {
+		contentType string
+		statusCode  int
+		resp        struct{ Result string }
+	}
+
+	tests := []struct {
+		name         string
+		request      string
+		body         struct{ URL string }
+		shortURLHost string
+		shortener    shortener
+		want         want
+	}{
+		{
+			name:         "correct",
+			request:      "/shorten",
+			body:         struct{ URL string }{URL: "abcde"},
+			shortURLHost: "localhost:8080",
+			shortener:    shortener{shortened: "abcde"},
+			want: want{
+				contentType: "application/json",
+				statusCode:  http.StatusCreated,
+				resp:        struct{ Result string }{Result: "http://localhost:8080/abcde"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body bytes.Buffer
+			err := json.NewEncoder(&body).Encode(tt.body)
+			require.NoError(t, err)
+
+			request := httptest.NewRequest(http.MethodPost, tt.request, &body)
+			request.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			h := operation.ShortenFromJSONHandle(tt.shortURLHost, tt.shortener)
+			h(w, request)
+
+			result := w.Result()
+
+			assert.Equal(t, tt.want.statusCode, result.StatusCode)
+			assert.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"))
+
+			var resp struct {
+				Result string
+			}
+
+			err = json.NewDecoder(result.Body).Decode(&resp)
+			require.NoError(t, err)
+
+			err = result.Body.Close()
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.want.resp, resp)
 		})
 	}
 }
