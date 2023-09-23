@@ -50,6 +50,13 @@ func run() error {
 			IDGen:   idgen,
 		})))
 
+	router.Post("/api/shorten",
+		logged(operation.ShortenFromJSONHandle(opt.BaseURL, operation.Shortener{
+			Encoder: c,
+			Storage: s,
+			IDGen:   idgen,
+		})))
+
 	router.Get("/{short}",
 		logged(operation.ExpandHandle(operation.Expander{
 			Decoder: c,

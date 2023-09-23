@@ -2,6 +2,7 @@ package operation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,15 +11,11 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
-type Shorten struct {
-	Service interface {
-		Shorten(ctx context.Context, url string) (string, error)
-	}
+type shortener interface {
+	Shorten(ctx context.Context, url string) (string, error)
 }
 
-func ShortenHandle(baseURL string, s interface {
-	Shorten(ctx context.Context, url string) (string, error)
-}) http.HandlerFunc {
+func ShortenHandle(baseURL string, s shortener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -27,25 +24,62 @@ func ShortenHandle(baseURL string, s interface {
 			return
 		}
 
-		ctx := r.Context()
-
-		url := string(body)
-		short, err := s.Shorten(ctx, url)
+		short, err := shorten(r.Context(), baseURL, string(body), s)
 		if err != nil {
 			logError(r, err)
 			http.Error(w, "An error has occured", http.StatusInternalServerError)
-			return
-		}
-
-		host := baseURL
-		if !strings.Contains(host, "//") {
-			host = "http://" + host
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(fmt.Sprintf("%s/%s", host, short)))
+		w.Write([]byte(short))
 	}
+}
+
+func ShortenFromJSONHandle(baseURL string, s shortener) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			URL string `json:"url"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			logError(r, fmt.Errorf("read request body: %w", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		short, err := shorten(r.Context(), baseURL, body.URL, s)
+		if err != nil {
+			logError(r, err)
+			http.Error(w, "An error has occured", http.StatusInternalServerError)
+		}
+
+		resp := struct {
+			Result string `json:"result"`
+		}{
+			Result: short,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			logError(r, fmt.Errorf("write response body: %w", err))
+		}
+	}
+}
+
+func shorten(ctx context.Context, baseURL, url string, s shortener) (string, error) {
+	short, err := s.Shorten(ctx, url)
+	if err != nil {
+		return "", err
+	}
+
+	host := baseURL
+	if !strings.Contains(host, "//") {
+		host = "http://" + host
+	}
+
+	return fmt.Sprintf("%s/%s", host, short), nil
 }
 
 type Shortener struct {
