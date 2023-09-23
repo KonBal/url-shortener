@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"bytes"
@@ -12,7 +12,10 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
+
+var logger = zap.NewNop().Sugar()
 
 type shortener struct {
 	shortened string
@@ -55,7 +58,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, bytes.NewBuffer([]byte(tt.body)))
 			w := httptest.NewRecorder()
-			h := operation.ShortenHandle(tt.shortURLHost, tt.shortener)
+			h := operation.ShortenHandle(logger, tt.shortURLHost, tt.shortener)
 			h(w, request)
 
 			result := w.Result()
@@ -113,7 +116,7 @@ func TestShortenFromJSONHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, &body)
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
-			h := operation.ShortenFromJSONHandle(tt.shortURLHost, tt.shortener)
+			h := operation.ShortenFromJSONHandle(logger, tt.shortURLHost, tt.shortener)
 			h(w, request)
 
 			result := w.Result()
@@ -172,7 +175,7 @@ func TestExpandHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tt.request, nil)
 			w := httptest.NewRecorder()
 
-			h := operation.ExpandHandle(tt.expander)
+			h := operation.ExpandHandle(logger, tt.expander)
 			h(w, request)
 
 			result := w.Result()

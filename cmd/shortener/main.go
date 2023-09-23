@@ -8,7 +8,6 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
 	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
-	"github.com/KonBal/url-shortener/internal/app/logging"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 	"github.com/go-chi/chi/v5"
@@ -37,31 +36,32 @@ func run() error {
 
 	logger := baseLogger.Sugar()
 
-	logged := logging.Handler(logger)
+	logged := LoggingHandler(logger)
+	compressed := ZipHandler()
 
 	c := base62.Encoder{}
 	s := storage.NewInMemory()
 	idgen := idgenerator.New()
 
 	router.Post("/",
-		logged(operation.ShortenHandle(opt.BaseURL, operation.Shortener{
+		logged(compressed(operation.ShortenHandle(logger, opt.BaseURL, operation.Shortener{
 			Encoder: c,
 			Storage: s,
 			IDGen:   idgen,
-		})))
+		}))))
 
 	router.Post("/api/shorten",
-		logged(operation.ShortenFromJSONHandle(opt.BaseURL, operation.Shortener{
+		logged(compressed(operation.ShortenFromJSONHandle(logger, opt.BaseURL, operation.Shortener{
 			Encoder: c,
 			Storage: s,
 			IDGen:   idgen,
-		})))
+		}))))
 
 	router.Get("/{short}",
-		logged(operation.ExpandHandle(operation.Expander{
+		logged(compressed(operation.ExpandHandle(logger, operation.Expander{
 			Decoder: c,
 			Storage: s,
-		})))
+		}))))
 
 	return http.ListenAndServe(opt.ServerAddress, router)
 }

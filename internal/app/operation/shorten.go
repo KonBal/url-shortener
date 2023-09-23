@@ -15,18 +15,20 @@ type shortener interface {
 	Shorten(ctx context.Context, url string) (string, error)
 }
 
-func ShortenHandle(baseURL string, s shortener) http.HandlerFunc {
+func ShortenHandle(logger interface {
+	Errorf(template string, args ...interface{})
+}, baseURL string, s shortener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			logError(r, fmt.Errorf("read request body: %w", err))
+			logError(logger, r, fmt.Errorf("read request body: %w", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
 		short, err := shorten(r.Context(), baseURL, string(body), s)
 		if err != nil {
-			logError(r, err)
+			logError(logger, r, err)
 			http.Error(w, "An error has occured", http.StatusInternalServerError)
 		}
 
@@ -36,21 +38,23 @@ func ShortenHandle(baseURL string, s shortener) http.HandlerFunc {
 	}
 }
 
-func ShortenFromJSONHandle(baseURL string, s shortener) http.HandlerFunc {
+func ShortenFromJSONHandle(logger interface {
+	Errorf(template string, args ...interface{})
+}, baseURL string, s shortener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			URL string `json:"url"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			logError(r, fmt.Errorf("read request body: %w", err))
+			logError(logger, r, fmt.Errorf("read request body: %w", err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
 		short, err := shorten(r.Context(), baseURL, body.URL, s)
 		if err != nil {
-			logError(r, err)
+			logError(logger, r, err)
 			http.Error(w, "An error has occured", http.StatusInternalServerError)
 		}
 
@@ -63,7 +67,7 @@ func ShortenFromJSONHandle(baseURL string, s shortener) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			logError(r, fmt.Errorf("write response body: %w", err))
+			logError(logger, r, fmt.Errorf("write response body: %w", err))
 		}
 	}
 }

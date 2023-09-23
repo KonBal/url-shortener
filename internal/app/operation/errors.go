@@ -2,12 +2,13 @@ package operation
 
 import (
 	"errors"
-	"log"
 	"net/http"
 )
 
-func logError(req *http.Request, err error) {
-	log.Printf("%v %v: %v", req.Method, req.URL, err)
+func logError(logger interface {
+	Errorf(template string, args ...interface{})
+}, req *http.Request, err error) {
+	logger.Errorf("%v %v: %v", req.Method, req.URL, err)
 }
 
 var ErrNotFound error = errors.New("not found")

@@ -1,4 +1,4 @@
-package logging
+package main
 
 import (
 	"net/http"
@@ -9,16 +9,16 @@ type logger interface {
 	Infoln(args ...interface{})
 }
 
-type handler struct {
+type logHandler struct {
 	log logger
 }
 
-func Handler(logger logger) func(http.HandlerFunc) http.HandlerFunc {
-	h := &handler{log: logger}
+func LoggingHandler(logger logger) func(http.HandlerFunc) http.HandlerFunc {
+	h := &logHandler{log: logger}
 	return h.withLogging
 }
 
-func (h *handler) withLogging(next http.HandlerFunc) http.HandlerFunc {
+func (h *logHandler) withLogging(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		responseData := &responseData{}
 		rw := responseWriter{ResponseWriter: w, responseData: responseData}
