@@ -66,37 +66,40 @@ func (c *compressReader) Close() error {
 	return c.zr.Close()
 }
 
-type zipHandler struct{}
-
-func ZipHandler() func(http.HandlerFunc) http.HandlerFunc {
-	h := &zipHandler{}
-	return h.withCompression
+type zipHandler struct {
+	next http.Handler
 }
 
-func (h *zipHandler) withCompression(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ow := w
-
-		acceptEncoding := r.Header.Get("Accept-Encoding")
-		supportsGzip := strings.Contains(acceptEncoding, "gzip")
-		if supportsGzip {
-			cw := newCompressWriter(w)
-			ow = cw
-			defer cw.Close()
+func ZipHandler() func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return &zipHandler{
+			next: h,
 		}
-
-		contentEncoding := r.Header.Get("Content-Encoding")
-		sendsGzip := strings.Contains(contentEncoding, "gzip")
-		if sendsGzip {
-			cr, err := newCompressReader(r.Body)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			r.Body = cr
-			defer cr.Close()
-		}
-
-		next.ServeHTTP(ow, r)
 	}
+}
+
+func (h *zipHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	ow := w
+
+	acceptEncoding := req.Header.Get("Accept-Encoding")
+	supportsGzip := strings.Contains(acceptEncoding, "gzip")
+	if supportsGzip {
+		cw := newCompressWriter(w)
+		ow = cw
+		defer cw.Close()
+	}
+
+	contentEncoding := req.Header.Get("Content-Encoding")
+	sendsGzip := strings.Contains(contentEncoding, "gzip")
+	if sendsGzip {
+		cr, err := newCompressReader(req.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		req.Body = cr
+		defer cr.Close()
+	}
+
+	h.next.ServeHTTP(ow, req)
 }

@@ -2,37 +2,29 @@ package storage
 
 import "sync"
 
-type inMemoryStorage map[uint64]string
+type inMemoryStorage map[string]string
 
 var storage inMemoryStorage
 var lock *sync.RWMutex
 
 func NewInMemory() Storage {
-	storage = make(map[uint64]string)
+	storage = make(map[string]string)
 	lock = &sync.RWMutex{}
 	return storage
 }
 
-func (s inMemoryStorage) Set(key uint64, value string) error {
+func (s inMemoryStorage) Add(uuid uint64, shortURL string, origURL string) error {
 	lock.Lock()
-	storage[key] = value
+	storage[shortURL] = origURL
 	lock.Unlock()
 
 	return nil
 }
 
-func (s inMemoryStorage) Get(key uint64) (string, bool) {
+func (s inMemoryStorage) Get(shortURL string) (string, bool, error) {
 	lock.RLock()
-	v, ok := storage[key]
+	v, ok := storage[shortURL]
 	lock.RUnlock()
 
-	return v, ok
-}
-
-func (s inMemoryStorage) HasKey(key uint64) bool {
-	lock.RLock()
-	_, ok := storage[key]
-	lock.RUnlock()
-
-	return ok
+	return v, ok, nil
 }
