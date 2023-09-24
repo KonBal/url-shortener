@@ -9,13 +9,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
-var logger = zap.NewNop().Sugar()
+var log = logger.NewLogger(zap.NewNop())
 
 type shortener struct {
 	shortened string
@@ -58,8 +59,8 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, bytes.NewBuffer([]byte(tt.body)))
 			w := httptest.NewRecorder()
-			h := operation.ShortenHandle(logger, tt.shortURLHost, tt.shortener)
-			h(w, request)
+			h := operation.Shorten{Log: log, BaseURL: tt.shortURLHost, Service: tt.shortener}
+			h.ServeHTTP(w, request)
 
 			result := w.Result()
 
@@ -116,8 +117,8 @@ func TestShortenFromJSONHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, &body)
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
-			h := operation.ShortenFromJSONHandle(logger, tt.shortURLHost, tt.shortener)
-			h(w, request)
+			h := operation.ShortenFromJSON{Log: log, BaseURL: tt.shortURLHost, Service: tt.shortener}
+			h.ServeHTTP(w, request)
 
 			result := w.Result()
 
@@ -175,8 +176,8 @@ func TestExpandHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tt.request, nil)
 			w := httptest.NewRecorder()
 
-			h := operation.ExpandHandle(logger, tt.expander)
-			h(w, request)
+			h := operation.Expand{Log: log, Service: tt.expander}
+			h.ServeHTTP(w, request)
 
 			result := w.Result()
 			err := result.Body.Close()

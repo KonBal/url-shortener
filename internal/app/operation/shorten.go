@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
@@ -15,60 +16,69 @@ type shortener interface {
 	Shorten(ctx context.Context, url string) (string, error)
 }
 
-func ShortenHandle(logger interface {
-	Errorf(template string, args ...interface{})
-}, baseURL string, s shortener) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			logError(logger, r, fmt.Errorf("read request body: %w", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		short, err := shorten(r.Context(), baseURL, string(body), s)
-		if err != nil {
-			logError(logger, r, err)
-			http.Error(w, "An error has occured", http.StatusInternalServerError)
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(short))
+type Shorten struct {
+	Log     *logger.Logger
+	BaseURL string
+	Service interface {
+		Shorten(ctx context.Context, url string) (string, error)
 	}
 }
 
-func ShortenFromJSONHandle(logger interface {
-	Errorf(template string, args ...interface{})
-}, baseURL string, s shortener) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			URL string `json:"url"`
-		}
+func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		o.Log.RequestError(req, fmt.Errorf("read request body: %w", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			logError(logger, r, fmt.Errorf("read request body: %w", err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
+	short, err := shorten(req.Context(), o.BaseURL, string(body), o.Service)
+	if err != nil {
+		o.Log.RequestError(req, err)
+		http.Error(w, "An error has occured", http.StatusInternalServerError)
+	}
 
-		short, err := shorten(r.Context(), baseURL, body.URL, s)
-		if err != nil {
-			logError(logger, r, err)
-			http.Error(w, "An error has occured", http.StatusInternalServerError)
-		}
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(short))
+}
 
-		resp := struct {
-			Result string `json:"result"`
-		}{
-			Result: short,
-		}
+type ShortenFromJSON struct {
+	Log     *logger.Logger
+	BaseURL string
+	Service interface {
+		Shorten(ctx context.Context, url string) (string, error)
+	}
+}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			logError(logger, r, fmt.Errorf("write response body: %w", err))
-		}
+func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		o.Log.RequestError(req, fmt.Errorf("read request body: %w", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	short, err := shorten(req.Context(), o.BaseURL, body.URL, o.Service)
+	if err != nil {
+		o.Log.RequestError(req, err)
+		http.Error(w, "An error has occured", http.StatusInternalServerError)
+		return
+	}
+
+	resp := struct {
+		Result string `json:"result"`
+	}{
+		Result: short,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		o.Log.RequestError(req, fmt.Errorf("write response body: %w", err))
 	}
 }
 
@@ -97,22 +107,13 @@ type Shortener struct {
 }
 
 func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
-	id := s.findFreeID()
+	id := s.IDGen.Next()
 
-	err := s.Storage.Set(id, url)
+	encoded := s.Encoder.Encode(id)
+	err := s.Storage.Add(id, encoded, url)
 	if err != nil {
 		return "", fmt.Errorf("shorten: failed to save ID: %v", err)
 	}
 
-	encoded := s.Encoder.Encode(id)
-
 	return encoded, nil
-}
-
-func (s Shortener) findFreeID() uint64 {
-	var ID uint64
-	for used := true; used; used = s.Storage.HasKey(ID) {
-		ID = s.IDGen.Next()
-	}
-	return ID
 }

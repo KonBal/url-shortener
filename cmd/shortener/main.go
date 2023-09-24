@@ -8,6 +8,7 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
 	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
+	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 	"github.com/go-chi/chi/v5"
@@ -17,50 +18,62 @@ import (
 func main() {
 	config.Parse()
 
-	if err := run(); err != nil {
-		log.Fatalf("main: unexpected error: %v", err)
+	baseLogger, err := zap.NewDevelopment()
+	if err != nil {
+		log.Fatalf("main: failed to initialize custom logger: %v", err)
+		return
+	}
+	defer baseLogger.Sync()
+
+	customLog := logger.NewLogger(baseLogger)
+
+	if err := run(customLog); err != nil {
+		customLog.Fatalf("main: unexpected error: %w", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(log *logger.Logger) error {
 	opt := config.Get()
 
 	router := chi.NewRouter()
 
-	baseLogger, err := zap.NewDevelopment()
-	if err != nil {
-		return err
-	}
-	defer baseLogger.Sync()
-
-	logger := baseLogger.Sugar()
-
-	logged := LoggingHandler(logger)
+	logged := LoggingHandler(log)
 	compressed := ZipHandler()
 
 	c := base62.Encoder{}
-	s := storage.NewInMemory()
-	idgen := idgenerator.New()
+	s, err := storage.NewFileStorage(opt.FileStoragePath)
+	if err != nil {
+		return err
+	}
+	defer s.Close()
 
-	router.Post("/",
-		logged(compressed(operation.ShortenHandle(logger, opt.BaseURL, operation.Shortener{
-			Encoder: c,
-			Storage: s,
-			IDGen:   idgen,
+	shortener := operation.Shortener{
+		Encoder: c,
+		Storage: s,
+		IDGen:   idgenerator.New(),
+	}
+
+	expander := operation.Expander{Storage: s}
+
+	router.Method(http.MethodPost, "/",
+		logged(compressed((&operation.Shorten{
+			Log:     log,
+			BaseURL: opt.BaseURL,
+			Service: shortener,
 		}))))
 
-	router.Post("/api/shorten",
-		logged(compressed(operation.ShortenFromJSONHandle(logger, opt.BaseURL, operation.Shortener{
-			Encoder: c,
-			Storage: s,
-			IDGen:   idgen,
+	router.Method(http.MethodPost, "/api/shorten",
+		logged(compressed((&operation.ShortenFromJSON{
+			Log:     log,
+			BaseURL: opt.BaseURL,
+			Service: shortener,
 		}))))
 
-	router.Get("/{short}",
-		logged(compressed(operation.ExpandHandle(logger, operation.Expander{
-			Decoder: c,
-			Storage: s,
+	router.Method(http.MethodGet, "/{short}",
+		logged(compressed((&operation.Expand{
+			Log:     log,
+			Service: expander,
 		}))))
 
 	return http.ListenAndServe(opt.ServerAddress, router)

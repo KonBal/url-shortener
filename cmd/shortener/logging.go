@@ -3,38 +3,39 @@ package main
 import (
 	"net/http"
 	"time"
+
+	"github.com/KonBal/url-shortener/internal/app/logger"
 )
 
-type logger interface {
-	Infoln(args ...interface{})
-}
-
 type logHandler struct {
-	log logger
+	log  *logger.Logger
+	next http.Handler
 }
 
-func LoggingHandler(logger logger) func(http.HandlerFunc) http.HandlerFunc {
-	h := &logHandler{log: logger}
-	return h.withLogging
-}
-
-func (h *logHandler) withLogging(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		responseData := &responseData{}
-		rw := responseWriter{ResponseWriter: w, responseData: responseData}
-
-		started := time.Now()
-		next(&rw, r)
-		duration := time.Since(started)
-
-		h.log.Infoln(
-			"uri", r.RequestURI,
-			"method", r.Method,
-			"duration", duration,
-			"status", responseData.status,
-			"size", responseData.size,
-		)
+func LoggingHandler(logger *logger.Logger) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return &logHandler{
+			log:  logger,
+			next: h,
+		}
 	}
+}
+
+func (h *logHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	responseData := &responseData{}
+	rw := responseWriter{ResponseWriter: w, responseData: responseData}
+
+	started := time.Now()
+	h.next.ServeHTTP(&rw, req)
+	duration := time.Since(started)
+
+	h.log.Infoln(
+		"uri", req.RequestURI,
+		"method", req.Method,
+		"duration", duration,
+		"status", responseData.status,
+		"size", responseData.size,
+	)
 }
 
 type responseData struct {

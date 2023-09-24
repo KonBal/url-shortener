@@ -6,51 +6,48 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 	"github.com/go-chi/chi/v5"
 )
 
-func ExpandHandle(logger interface {
-	Errorf(template string, args ...interface{})
-}, e interface {
-	Expand(ctx context.Context, shortened string) (string, error)
-}) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		shortened := chi.URLParam(r, "short")
-		ctx := r.Context()
-		url, err := e.Expand(ctx, shortened)
-
-		switch {
-		case errors.Is(err, ErrNotFound):
-			logError(logger, r, err)
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
-		case err != nil:
-			logError(logger, r, err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("Location", url)
-		w.WriteHeader(http.StatusTemporaryRedirect)
+type Expand struct {
+	Log     *logger.Logger
+	Service interface {
+		Expand(ctx context.Context, shortened string) (string, error)
 	}
 }
 
-type Expander struct {
-	Decoder interface {
-		Decode(v string) (uint64, error)
+func (o *Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	shortened := chi.URLParam(req, "short")
+	ctx := req.Context()
+	url, err := o.Service.Expand(ctx, shortened)
+
+	switch {
+	case errors.Is(err, ErrNotFound):
+		o.Log.RequestError(req, err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	case err != nil:
+		o.Log.RequestError(req, err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Location", url)
+	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+type Expander struct {
 	Storage storage.Storage
 }
 
 func (r Expander) Expand(ctx context.Context, shortened string) (string, error) {
-	ID, err := r.Decoder.Decode(shortened)
+	url, ok, err := r.Storage.Get(shortened)
 	if err != nil {
-		return "", fmt.Errorf("expand: failed to decode: %w", err)
+		return "", fmt.Errorf("expand: failed to get original URL: %w", err)
 	}
-
-	url, ok := r.Storage.Get(ID)
 	if !ok {
 		return "", notFoundError(fmt.Sprintf("original URL not found for shortened %s", shortened))
 	}
