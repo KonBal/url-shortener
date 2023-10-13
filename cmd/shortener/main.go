@@ -1,9 +1,12 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
@@ -37,6 +40,12 @@ func run(log *logger.Logger) error {
 	opt := config.Get()
 
 	router := chi.NewRouter()
+
+	db, err := sql.Open("pgx", opt.DBConnectionString)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 
 	logged := LoggingHandler(log)
 	compressed := ZipHandler()
@@ -75,6 +84,8 @@ func run(log *logger.Logger) error {
 			Log:     log,
 			Service: expander,
 		}))))
+
+	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, DB: db}))
 
 	return http.ListenAndServe(opt.ServerAddress, router)
 }
