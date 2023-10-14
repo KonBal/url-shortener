@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -87,11 +88,11 @@ func (s *FileStorage) Close() error {
 	return s.writer.Close()
 }
 
-func (s *FileStorage) Add(uuid uint64, shortURL string, origURL string) error {
+func (s *FileStorage) Add(ctx context.Context, uuid uint64, shortURL string, origURL string) error {
 	return s.writer.Write(URLEntry{UUID: uuid, ShortURL: shortURL, OriginalURL: origURL})
 }
 
-func (s *FileStorage) Get(shortURL string) (string, bool, error) {
+func (s *FileStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
 		return "", false, err

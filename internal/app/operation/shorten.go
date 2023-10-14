@@ -110,7 +110,7 @@ func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
 	id := s.IDGen.Next()
 
 	encoded := s.Encoder.Encode(id)
-	err := s.Storage.Add(id, encoded, url)
+	err := s.Storage.Add(ctx, id, encoded, url)
 	if err != nil {
 		return "", fmt.Errorf("shorten: failed to save ID: %v", err)
 	}
