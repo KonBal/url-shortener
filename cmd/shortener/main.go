@@ -50,15 +50,30 @@ func run(log *logger.Logger) error {
 	logged := LoggingHandler(log)
 	compressed := ZipHandler()
 
-	c := base62.Encoder{}
-	s, err := storage.NewFileStorage(opt.FileStoragePath)
-	if err != nil {
-		return err
+	var s storage.Storage
+
+	if opt.DBConnectionString != "" {
+		dbs, err := storage.NewDBStorage(opt.DBConnectionString)
+		if err != nil {
+			return err
+		}
+		defer dbs.Close()
+
+		s = dbs
+	} else if opt.FileStoragePath != "" {
+		fs, err := storage.NewFileStorage(opt.FileStoragePath)
+		if err != nil {
+			return err
+		}
+		defer fs.Close()
+
+		s = fs
+	} else {
+		s = storage.NewInMemory()
 	}
-	defer s.Close()
 
 	shortener := operation.Shortener{
-		Encoder: c,
+		Encoder: base62.Encoder{},
 		Storage: s,
 		IDGen:   idgenerator.New(),
 	}
