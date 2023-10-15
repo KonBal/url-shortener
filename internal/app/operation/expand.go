@@ -44,12 +44,12 @@ type Expander struct {
 }
 
 func (r Expander) Expand(ctx context.Context, shortened string) (string, error) {
-	url, ok, err := r.Storage.GetOriginal(ctx, shortened)
-	if err != nil {
-		return "", fmt.Errorf("expand: failed to get original URL: %w", err)
-	}
-	if !ok {
+	url, err := r.Storage.GetOriginal(ctx, shortened)
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
 		return "", notFoundError(fmt.Sprintf("original URL not found for shortened %s", shortened))
+	case err != nil:
+		return "", fmt.Errorf("expand: failed to get original URL: %w", err)
 	}
 
 	return url, nil

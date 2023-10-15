@@ -15,3 +15,11 @@ func (e notFoundError) Error() string {
 func (e notFoundError) Is(target error) bool {
 	return target == ErrNotFound
 }
+
+type notUniqueError struct {
+	ShortURL string
+}
+
+func (e notUniqueError) Error() string {
+	return "short url already exists"
+}

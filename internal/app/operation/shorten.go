@@ -3,6 +3,7 @@ package operation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,15 +29,23 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+	status := http.StatusCreated
 
 	short, err := o.Service.Shorten(ctx, string(body))
 	if err != nil {
-		o.Log.RequestError(req, err)
-		http.Error(w, "An error has occured", http.StatusInternalServerError)
+		var errUnique *notUniqueError
+		if errors.As(err, &errUnique) {
+			status = http.StatusConflict
+			short = errUnique.ShortURL
+		} else {
+			o.Log.RequestError(req, err)
+			http.Error(w, "An error has occured", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	w.Write([]byte(short))
 }
 
@@ -59,11 +68,19 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+	status := http.StatusCreated
+
 	short, err := o.Service.Shorten(ctx, body.URL)
 	if err != nil {
-		o.Log.RequestError(req, err)
-		http.Error(w, "An error has occured", http.StatusInternalServerError)
-		return
+		var errUnique *notUniqueError
+		if errors.As(err, &errUnique) {
+			status = http.StatusConflict
+			short = errUnique.ShortURL
+		} else {
+			o.Log.RequestError(req, err)
+			http.Error(w, "An error has occured", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	resp := struct {
@@ -73,7 +90,7 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		o.Log.RequestError(req, fmt.Errorf("write response body: %w", err))
 	}
@@ -126,8 +143,16 @@ func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
 	code := s.getEncoded()
 
 	err := s.Storage.Add(ctx, storage.URLEntry{ShortURL: code, OriginalURL: url})
-	if err != nil {
-		return "", fmt.Errorf("shorten: failed to save url: %v", err)
+	switch {
+	case errors.Is(err, storage.ErrNotUnique):
+		sh, err := s.Storage.GetShort(ctx, url)
+		if err != nil {
+			return "", err
+		}
+
+		return "", &notUniqueError{ShortURL: resolveURL(s.BaseURL, sh)}
+	case err != nil:
+		return "", fmt.Errorf("shorten: failed to save url: %w", err)
 	}
 
 	return resolveURL(s.BaseURL, code), nil

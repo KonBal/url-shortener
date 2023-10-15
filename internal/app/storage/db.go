@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type DBStorage struct {
@@ -19,7 +22,14 @@ func (s *DBStorage) Add(ctx context.Context, u URLEntry) error {
 	_, err := s.db.ExecContext(ctx,
 		`insert into urls(short_url, original_url) values ($1, $2)`,
 		u.ShortURL, u.OriginalURL)
+
 	if err != nil {
+		var pgErr *pgconn.PgError
+		c := errors.As(err, &pgErr)
+		if c && pgErr.Code == pgerrcode.UniqueViolation {
+			return ErrNotUnique
+		}
+
 		return fmt.Errorf("db: %w", err)
 	}
 
@@ -49,7 +59,7 @@ func (s *DBStorage) AddMany(ctx context.Context, urls []URLEntry) error {
 	return tx.Commit()
 }
 
-func (s *DBStorage) GetOriginal(ctx context.Context, shortURL string) (string, bool, error) {
+func (s *DBStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
 	const query = `
 		select u.original_url
 		from urls as u
@@ -61,20 +71,37 @@ func (s *DBStorage) GetOriginal(ctx context.Context, shortURL string) (string, b
 	err := s.db.QueryRowContext(ctx, query, shortURL).Scan(&url)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return "", false, nil
+		return "", ErrNotFound
 	case err != nil:
-		return "", false, fmt.Errorf("db: %w", err)
+		return "", fmt.Errorf("db: %w", err)
 	}
 
-	return url, true, nil
+	return url, nil
+}
+
+func (s *DBStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+	const query = `
+		select u.short_url
+		from urls as u
+		where u.original_url = $1;
+	`
+
+	var url string
+
+	err := s.db.QueryRowContext(ctx, query, origURL).Scan(&url)
+	if err != nil {
+		return "", fmt.Errorf("db: %w", err)
+	}
+
+	return url, nil
 }
 
 func (s *DBStorage) Bootstrap() error {
 	_, err := s.db.Exec(`
 		create table if not exists urls (
 			id serial primary key,
-			short_url varchar not null unique,
-			original_url varchar not null
+			short_url varchar not null,
+			original_url varchar not null unique
 		);
 	`)
 	if err != nil {

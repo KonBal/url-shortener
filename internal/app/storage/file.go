@@ -106,24 +106,48 @@ func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry) error {
 	return nil
 }
 
-func (s *FileStorage) GetOriginal(ctx context.Context, shortURL string) (string, bool, error) {
+func (s *FileStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	defer reader.Close()
 
+	entry, err := reader.find(func(entry *URLEntry) bool { return entry.ShortURL == shortURL })
+	if err != nil {
+		return "", err
+	}
+
+	return entry.OriginalURL, nil
+}
+
+func (s *FileStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+	reader, err := newFileReader(s.fname)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	entry, err := reader.find(func(entry *URLEntry) bool { return entry.OriginalURL == origURL })
+	if err != nil {
+		return "", err
+	}
+
+	return entry.ShortURL, nil
+}
+
+func (r *jsonFileReader) find(cond func(entry *URLEntry) bool) (*URLEntry, error) {
 	for {
-		entry, err := reader.Read()
+		entry, err := r.Read()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return "", false, nil
+				return nil, ErrNotFound
 			}
-			return "", false, err
+			return nil, err
 		}
 
-		if entry.ShortURL == shortURL {
-			return entry.OriginalURL, true, nil
+		if cond(entry) {
+			return entry, nil
 		}
 	}
 }
