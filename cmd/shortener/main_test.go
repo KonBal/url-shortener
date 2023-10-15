@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,11 +20,12 @@ import (
 var log = logger.NewLogger(zap.NewNop())
 
 type shortener struct {
+	baseURL   string
 	shortened string
 }
 
 func (s shortener) Shorten(ctx context.Context, url string) (string, error) {
-	return s.shortened, nil
+	return fmt.Sprintf("%s/%s", s.baseURL, s.shortened), nil
 }
 
 func TestShortenHandler(t *testing.T) {
@@ -42,11 +44,10 @@ func TestShortenHandler(t *testing.T) {
 		want         want
 	}{
 		{
-			name:         "correct",
-			request:      "/",
-			body:         "abcde",
-			shortURLHost: "localhost:8080",
-			shortener:    shortener{shortened: "abcde"},
+			name:      "correct",
+			request:   "/",
+			body:      "abcde",
+			shortener: shortener{shortened: "abcde", baseURL: "http://localhost:8080"},
 			want: want{
 				contentType: "text/plain",
 				statusCode:  http.StatusCreated,
@@ -59,7 +60,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, bytes.NewBuffer([]byte(tt.body)))
 			w := httptest.NewRecorder()
-			h := operation.Shorten{Log: log, BaseURL: tt.shortURLHost, Service: tt.shortener}
+			h := operation.Shorten{Log: log, Service: tt.shortener}
 			h.ServeHTTP(w, request)
 
 			result := w.Result()
@@ -95,11 +96,10 @@ func TestShortenFromJSONHandler(t *testing.T) {
 		want         want
 	}{
 		{
-			name:         "correct",
-			request:      "/shorten",
-			body:         struct{ URL string }{URL: "abcde"},
-			shortURLHost: "localhost:8080",
-			shortener:    shortener{shortened: "abcde"},
+			name:      "correct",
+			request:   "/shorten",
+			body:      struct{ URL string }{URL: "abcde"},
+			shortener: shortener{shortened: "abcde", baseURL: "http://localhost:8080"},
 			want: want{
 				contentType: "application/json",
 				statusCode:  http.StatusCreated,
@@ -117,7 +117,7 @@ func TestShortenFromJSONHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, &body)
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
-			h := operation.ShortenFromJSON{Log: log, BaseURL: tt.shortURLHost, Service: tt.shortener}
+			h := operation.ShortenFromJSON{Log: log, Service: tt.shortener}
 			h.ServeHTTP(w, request)
 
 			result := w.Result()

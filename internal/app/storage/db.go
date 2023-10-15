@@ -11,41 +11,50 @@ type DBStorage struct {
 	db *sql.DB
 }
 
-func NewDBStorage(connString string) (*DBStorage, error) {
-	db, err := sql.Open("pgx", connString)
-	if err != nil {
-		return nil, fmt.Errorf("db: failed to establish connection: %w", err)
-	} else if err = db.Ping(); err != nil {
-		return nil, err
-	}
-
-	if err := createTables(db); err != nil {
-		return nil, fmt.Errorf("db: failed to create tables: %w", err)
-	}
-
-	return &DBStorage{db: db}, nil
+func NewDBStorage(db *sql.DB) *DBStorage {
+	return &DBStorage{db: db}
 }
 
-func (s *DBStorage) Close() error {
-	return s.db.Close()
-}
-
-func (s *DBStorage) Add(ctx context.Context, uuid uint64, shortURL string, origURL string) error {
+func (s *DBStorage) Add(ctx context.Context, u URLEntry) error {
 	_, err := s.db.ExecContext(ctx,
-		`insert into urls(uuid, short_url, original_url) values ($1, $2, $3)`, uuid, shortURL, origURL)
+		`insert into urls(short_url, original_url) values ($1, $2)`,
+		u.ShortURL, u.OriginalURL)
 	if err != nil {
-		return fmt.Errorf("db: failed to add entry: %w", err)
+		return fmt.Errorf("db: %w", err)
 	}
 
 	return nil
 }
 
-func (s *DBStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
+func (s *DBStorage) AddMany(ctx context.Context, urls []URLEntry) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("db: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `insert into urls(short_url, original_url) values ($1, $2)`)
+	if err != nil {
+		return fmt.Errorf("db: %w", err)
+	}
+
+	for _, u := range urls {
+		_, err := stmt.ExecContext(ctx, u.ShortURL, u.OriginalURL)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("db: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (s *DBStorage) GetOriginal(ctx context.Context, shortURL string) (string, bool, error) {
 	const query = `
-select u.original_url
-from urls as u
-where u.short_url = $1;
-`
+		select u.original_url
+		from urls as u
+		where u.short_url = $1;
+	`
 
 	var url string
 
@@ -54,21 +63,27 @@ where u.short_url = $1;
 	case errors.Is(err, sql.ErrNoRows):
 		return "", false, nil
 	case err != nil:
-		return "", false, fmt.Errorf("db: %v", err)
+		return "", false, fmt.Errorf("db: %w", err)
 	}
 
 	return url, true, nil
 }
 
-const createTablesQuery = `
-create table if not exists urls (
-	id serial primary key,
-	uuid numeric not null unique,
-	short_url varchar not null,
-	original_url varchar not null
-);`
+func (s *DBStorage) Bootstrap() error {
+	_, err := s.db.Exec(`
+		create table if not exists urls (
+			id serial primary key,
+			short_url varchar not null unique,
+			original_url varchar not null
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("db: failed to bootstrap: %w", err)
+	}
 
-func createTables(db *sql.DB) error {
-	_, err := db.Exec(createTablesQuery)
-	return err
+	return nil
+}
+
+func (s *DBStorage) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
 }

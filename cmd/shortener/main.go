@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -41,41 +42,47 @@ func run(log *logger.Logger) error {
 
 	router := chi.NewRouter()
 
-	db, err := sql.Open("pgx", opt.DBConnectionString)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
 	logged := LoggingHandler(log)
 	compressed := ZipHandler()
 
+	randGen := idgenerator.New()
+
 	var s storage.Storage
 
-	if opt.DBConnectionString != "" {
-		dbs, err := storage.NewDBStorage(opt.DBConnectionString)
+	switch {
+	case opt.DBConnectionString != "":
+		db, err := sql.Open("pgx", opt.DBConnectionString)
+		if err != nil {
+			return fmt.Errorf("failed to establish connection: %w", err)
+		} else if err = db.Ping(); err != nil {
+			return err
+		}
+		defer db.Close()
+
+		dbs := storage.NewDBStorage(db)
+		err = dbs.Bootstrap()
 		if err != nil {
 			return err
 		}
-		defer dbs.Close()
 
 		s = dbs
-	} else if opt.FileStoragePath != "" {
-		fs, err := storage.NewFileStorage(opt.FileStoragePath)
+	case opt.FileStoragePath != "":
+		fs, err := storage.NewFileStorage(opt.FileStoragePath, randGen)
 		if err != nil {
 			return err
 		}
 		defer fs.Close()
 
 		s = fs
-	} else {
+	default:
 		s = storage.NewInMemory()
 	}
 
 	shortener := operation.Shortener{
-		Encoder: base62.Encoder{},
-		Storage: s,
-		IDGen:   idgenerator.New(),
+		BaseURL:    opt.BaseURL,
+		Encoder:    base62.Encoder{},
+		Storage:    s,
+		Uint64Rand: randGen,
 	}
 
 	expander := operation.Expander{Storage: s}
@@ -83,14 +90,18 @@ func run(log *logger.Logger) error {
 	router.Method(http.MethodPost, "/",
 		logged(compressed((&operation.Shorten{
 			Log:     log,
-			BaseURL: opt.BaseURL,
 			Service: shortener,
 		}))))
 
 	router.Method(http.MethodPost, "/api/shorten",
 		logged(compressed((&operation.ShortenFromJSON{
 			Log:     log,
-			BaseURL: opt.BaseURL,
+			Service: shortener,
+		}))))
+
+	router.Method(http.MethodPost, "/api/shorten/batch",
+		logged(compressed((&operation.ShortenBatch{
+			Log:     log,
 			Service: shortener,
 		}))))
 
@@ -100,7 +111,7 @@ func run(log *logger.Logger) error {
 			Service: expander,
 		}))))
 
-	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, DB: db}))
+	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, Storage: s}))
 
 	return http.ListenAndServe(opt.ServerAddress, router)
 }

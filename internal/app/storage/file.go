@@ -9,12 +9,6 @@ import (
 	"os"
 )
 
-type URLEntry struct {
-	UUID        uint64 `json:"uuid"`
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
-}
-
 type jsonFileWriter struct {
 	file    *os.File
 	encoder *json.Encoder
@@ -33,7 +27,13 @@ func (w *jsonFileWriter) Close() error {
 	return w.file.Close()
 }
 
-func (w *jsonFileWriter) Write(row URLEntry) error {
+type fileEntry struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+	UUID        uint64 `json:"uuid"`
+}
+
+func (w *jsonFileWriter) Write(row fileEntry) error {
 	return w.encoder.Encode(row)
 }
 
@@ -70,9 +70,14 @@ func (r *jsonFileReader) Read() (*URLEntry, error) {
 type FileStorage struct {
 	fname  string
 	writer *jsonFileWriter
+	idGen  interface {
+		Next() uint64
+	}
 }
 
-func NewFileStorage(fname string) (*FileStorage, error) {
+func NewFileStorage(fname string, idGen interface {
+	Next() uint64
+}) (*FileStorage, error) {
 	w, err := newFileWriter(fname)
 	if err != nil {
 		return nil, err
@@ -81,6 +86,7 @@ func NewFileStorage(fname string) (*FileStorage, error) {
 	return &FileStorage{
 		fname:  fname,
 		writer: w,
+		idGen:  idGen,
 	}, nil
 }
 
@@ -88,11 +94,19 @@ func (s *FileStorage) Close() error {
 	return s.writer.Close()
 }
 
-func (s *FileStorage) Add(ctx context.Context, uuid uint64, shortURL string, origURL string) error {
-	return s.writer.Write(URLEntry{UUID: uuid, ShortURL: shortURL, OriginalURL: origURL})
+func (s *FileStorage) Add(ctx context.Context, u URLEntry) error {
+	return s.writer.Write(fileEntry{UUID: s.idGen.Next(), ShortURL: u.ShortURL, OriginalURL: u.OriginalURL})
 }
 
-func (s *FileStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
+func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry) error {
+	for _, u := range urls {
+		s.Add(ctx, u)
+	}
+
+	return nil
+}
+
+func (s *FileStorage) GetOriginal(ctx context.Context, shortURL string) (string, bool, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
 		return "", false, err
@@ -112,4 +126,8 @@ func (s *FileStorage) Get(ctx context.Context, shortURL string) (string, bool, e
 			return entry.OriginalURL, true, nil
 		}
 	}
+}
+
+func (s *FileStorage) Ping(ctx context.Context) error {
+	return nil
 }
