@@ -34,12 +34,28 @@ func (s InMemoryStorage) AddMany(ctx context.Context, urls []URLEntry) error {
 	return nil
 }
 
-func (s InMemoryStorage) GetOriginal(ctx context.Context, shortURL string) (string, bool, error) {
+func (s InMemoryStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
 	lock.RLock()
 	v, ok := storage[shortURL]
 	lock.RUnlock()
 
-	return v, ok, nil
+	if !ok {
+		return "", ErrNotFound
+	}
+
+	return v, nil
+}
+
+func (s InMemoryStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+	lock.RLock()
+	for k, v := range storage {
+		if v == origURL {
+			return k, nil
+		}
+	}
+	lock.RUnlock()
+
+	return "", ErrNotFound
 }
 
 func (s InMemoryStorage) Ping(ctx context.Context) error {
