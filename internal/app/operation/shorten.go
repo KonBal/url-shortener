@@ -12,13 +12,8 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
-type shortener interface {
-	Shorten(ctx context.Context, url string) (string, error)
-}
-
 type Shorten struct {
 	Log     *logger.Logger
-	BaseURL string
 	Service interface {
 		Shorten(ctx context.Context, url string) (string, error)
 	}
@@ -32,7 +27,9 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	short, err := shorten(req.Context(), o.BaseURL, string(body), o.Service)
+	ctx := req.Context()
+
+	short, err := o.Service.Shorten(ctx, string(body))
 	if err != nil {
 		o.Log.RequestError(req, err)
 		http.Error(w, "An error has occured", http.StatusInternalServerError)
@@ -45,7 +42,6 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 type ShortenFromJSON struct {
 	Log     *logger.Logger
-	BaseURL string
 	Service interface {
 		Shorten(ctx context.Context, url string) (string, error)
 	}
@@ -62,7 +58,8 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	short, err := shorten(req.Context(), o.BaseURL, body.URL, o.Service)
+	ctx := req.Context()
+	short, err := o.Service.Shorten(ctx, body.URL)
 	if err != nil {
 		o.Log.RequestError(req, err)
 		http.Error(w, "An error has occured", http.StatusInternalServerError)
@@ -82,38 +79,98 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func shorten(ctx context.Context, baseURL, url string, s shortener) (string, error) {
-	short, err := s.Shorten(ctx, url)
+type ShortenBatch struct {
+	Log     *logger.Logger
+	Service interface {
+		ShortenMany(ctx context.Context, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error)
+	}
+}
+
+func (o *ShortenBatch) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	var urls []CorrelatedOrigURL
+
+	if err := json.NewDecoder(req.Body).Decode(&urls); err != nil {
+		o.Log.RequestError(req, fmt.Errorf("read request body: %w", err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := req.Context()
+
+	res, err := o.Service.ShortenMany(ctx, urls)
 	if err != nil {
-		return "", err
+		o.Log.RequestError(req, err)
+		http.Error(w, "An error has occured", http.StatusInternalServerError)
+		return
 	}
 
-	host := baseURL
-	if !strings.Contains(host, "//") {
-		host = "http://" + host
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		o.Log.RequestError(req, fmt.Errorf("write response body: %w", err))
 	}
-
-	return fmt.Sprintf("%s/%s", host, short), nil
 }
 
 type Shortener struct {
+	BaseURL string
 	Encoder interface {
 		Encode(v uint64) string
 	}
-	Storage storage.Storage
-	IDGen   interface {
+	Storage    storage.Storage
+	Uint64Rand interface {
 		Next() uint64
 	}
 }
 
 func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
-	id := s.IDGen.Next()
+	code := s.getEncoded()
 
-	encoded := s.Encoder.Encode(id)
-	err := s.Storage.Add(ctx, id, encoded, url)
+	err := s.Storage.Add(ctx, storage.URLEntry{ShortURL: code, OriginalURL: url})
 	if err != nil {
-		return "", fmt.Errorf("shorten: failed to save ID: %v", err)
+		return "", fmt.Errorf("shorten: failed to save url: %v", err)
 	}
 
-	return encoded, nil
+	return resolveURL(s.BaseURL, code), nil
+}
+
+type CorrelatedOrigURL struct {
+	CorrelationID string `json:"correlation_id"`
+	OrigURL       string `json:"original_url"`
+}
+type CorrelatedShortURL struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
+func (s Shortener) ShortenMany(ctx context.Context, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
+	shorts := make([]CorrelatedShortURL, len(orig))
+	entries := make([]storage.URLEntry, len(orig))
+
+	for i, u := range orig {
+		code := s.getEncoded()
+		shorts[i] = CorrelatedShortURL{
+			CorrelationID: u.CorrelationID, ShortURL: resolveURL(s.BaseURL, code),
+		}
+		entries[i] = storage.URLEntry{ShortURL: code, OriginalURL: u.OrigURL}
+	}
+
+	err := s.Storage.AddMany(ctx, entries)
+	if err != nil {
+		return []CorrelatedShortURL{}, fmt.Errorf("shorten: failed to save urls: %w", err)
+	}
+
+	return shorts, nil
+}
+
+func (s Shortener) getEncoded() string {
+	return s.Encoder.Encode(s.Uint64Rand.Next())
+}
+
+func resolveURL(baseURL string, short string) string {
+	host := baseURL
+	if !strings.Contains(host, "//") {
+		host = "http://" + host
+	}
+
+	return fmt.Sprintf("%s/%s", host, short)
 }
