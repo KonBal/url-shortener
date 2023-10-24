@@ -10,13 +10,14 @@ import (
 	"strings"
 
 	"github.com/KonBal/url-shortener/internal/app/logger"
+	"github.com/KonBal/url-shortener/internal/app/session"
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
 type Shorten struct {
 	Log     *logger.Logger
 	Service interface {
-		Shorten(ctx context.Context, url string) (string, error)
+		Shorten(ctx context.Context, userID string, url string) (string, error)
 	}
 }
 
@@ -29,9 +30,11 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+	s := session.FromContext(ctx)
+
 	status := http.StatusCreated
 
-	short, err := o.Service.Shorten(ctx, string(body))
+	short, err := o.Service.Shorten(ctx, s.UserID, string(body))
 	if err != nil {
 		var errUnique *notUniqueError
 		if errors.As(err, &errUnique) {
@@ -52,7 +55,7 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type ShortenFromJSON struct {
 	Log     *logger.Logger
 	Service interface {
-		Shorten(ctx context.Context, url string) (string, error)
+		Shorten(ctx context.Context, userID string, url string) (string, error)
 	}
 }
 
@@ -68,9 +71,11 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+	s := session.FromContext(ctx)
+
 	status := http.StatusCreated
 
-	short, err := o.Service.Shorten(ctx, body.URL)
+	short, err := o.Service.Shorten(ctx, s.UserID, body.URL)
 	if err != nil {
 		var errUnique *notUniqueError
 		if errors.As(err, &errUnique) {
@@ -99,7 +104,7 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type ShortenBatch struct {
 	Log     *logger.Logger
 	Service interface {
-		ShortenMany(ctx context.Context, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error)
+		ShortenMany(ctx context.Context, userID string, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error)
 	}
 }
 
@@ -113,8 +118,9 @@ func (o *ShortenBatch) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+	s := session.FromContext(ctx)
 
-	res, err := o.Service.ShortenMany(ctx, urls)
+	res, err := o.Service.ShortenMany(ctx, s.UserID, urls)
 	if err != nil {
 		o.Log.RequestError(req, err)
 		http.Error(w, "An error has occured", http.StatusInternalServerError)
@@ -139,10 +145,10 @@ type Shortener struct {
 	}
 }
 
-func (s Shortener) Shorten(ctx context.Context, url string) (string, error) {
+func (s Shortener) Shorten(ctx context.Context, userID string, url string) (string, error) {
 	code := s.getEncoded()
 
-	err := s.Storage.Add(ctx, storage.URLEntry{ShortURL: code, OriginalURL: url})
+	err := s.Storage.Add(ctx, storage.URLEntry{ShortURL: code, OriginalURL: url}, userID)
 	switch {
 	case errors.Is(err, storage.ErrNotUnique):
 		sh, err := s.Storage.GetShort(ctx, url)
@@ -167,7 +173,7 @@ type CorrelatedShortURL struct {
 	ShortURL      string `json:"short_url"`
 }
 
-func (s Shortener) ShortenMany(ctx context.Context, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
+func (s Shortener) ShortenMany(ctx context.Context, userID string, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
 	shorts := make([]CorrelatedShortURL, len(orig))
 	entries := make([]storage.URLEntry, len(orig))
 
@@ -179,7 +185,7 @@ func (s Shortener) ShortenMany(ctx context.Context, orig []CorrelatedOrigURL) ([
 		entries[i] = storage.URLEntry{ShortURL: code, OriginalURL: u.OrigURL}
 	}
 
-	err := s.Storage.AddMany(ctx, entries)
+	err := s.Storage.AddMany(ctx, entries, userID)
 	if err != nil {
 		return []CorrelatedShortURL{}, fmt.Errorf("shorten: failed to save urls: %w", err)
 	}

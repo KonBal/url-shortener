@@ -6,10 +6,11 @@ import (
 )
 
 type Storage interface {
-	Add(ctx context.Context, url URLEntry) error
-	AddMany(ctx context.Context, urls []URLEntry) error
+	Add(ctx context.Context, url URLEntry, userID string) error
+	AddMany(ctx context.Context, urls []URLEntry, userID string) error
 	GetOriginal(ctx context.Context, shortURL string) (string, error)
 	GetShort(ctx context.Context, origURL string) (string, error)
+	GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error)
 
 	Ping(ctx context.Context) error
 }
