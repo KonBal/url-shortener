@@ -12,6 +12,7 @@ import (
 
 	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/operation"
+	"github.com/KonBal/url-shortener/internal/app/session"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -24,7 +25,7 @@ type shortener struct {
 	shortened string
 }
 
-func (s shortener) Shorten(ctx context.Context, url string) (string, error) {
+func (s shortener) Shorten(ctx context.Context, url string, userID string) (string, error) {
 	return fmt.Sprintf("%s/%s", s.baseURL, s.shortened), nil
 }
 
@@ -61,6 +62,8 @@ func TestShortenHandler(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tt.request, bytes.NewBuffer([]byte(tt.body)))
 			w := httptest.NewRecorder()
 			h := operation.Shorten{Log: log, Service: tt.shortener}
+			ctx := session.ContextWithSession(request.Context(), &session.Session{UserID: "1"})
+			request = request.WithContext(ctx)
 			h.ServeHTTP(w, request)
 
 			result := w.Result()
@@ -118,6 +121,8 @@ func TestShortenFromJSONHandler(t *testing.T) {
 			request.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			h := operation.ShortenFromJSON{Log: log, Service: tt.shortener}
+			ctx := session.ContextWithSession(request.Context(), &session.Session{UserID: "1"})
+			request = request.WithContext(ctx)
 			h.ServeHTTP(w, request)
 
 			result := w.Result()
@@ -174,6 +179,8 @@ func TestExpandHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tt.request, nil)
+			ctx := session.ContextWithSession(request.Context(), &session.Session{UserID: "1"})
+			request = request.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			h := operation.Expand{Log: log, Service: tt.expander}

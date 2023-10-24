@@ -15,6 +15,8 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
+	"github.com/KonBal/url-shortener/internal/app/user"
+	"github.com/KonBal/url-shortener/migrations"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -37,13 +39,16 @@ func main() {
 	}
 }
 
+type keyStore struct{}
+
+func (keyStore) Secret() []byte {
+	return []byte("my_secret_key")
+}
+
 func run(log *logger.Logger) error {
 	opt := config.Get()
 
 	router := chi.NewRouter()
-
-	logged := LoggingHandler(log)
-	compressed := ZipHandler()
 
 	randGen := idgenerator.New()
 
@@ -60,7 +65,7 @@ func run(log *logger.Logger) error {
 		defer db.Close()
 
 		dbs := storage.NewDBStorage(db)
-		err = dbs.Bootstrap()
+		err = dbs.Bootstrap(migrations.SQLFiles)
 		if err != nil {
 			return err
 		}
@@ -78,6 +83,14 @@ func run(log *logger.Logger) error {
 		s = storage.NewInMemory()
 	}
 
+	userStore := user.NewStore(randGen)
+	authenticator := user.Authenticator{SecretKeyStore: keyStore{}}
+
+	logged := LoggingHandler(log)
+	compressed := ZipHandler()
+	authorised := AuthHandler(authenticator)
+	authenticated := AuthenticationHandler(authenticator, userStore)
+
 	shortener := operation.Shortener{
 		BaseURL:    opt.BaseURL,
 		Encoder:    base62.Encoder{},
@@ -87,29 +100,40 @@ func run(log *logger.Logger) error {
 
 	expander := operation.Expander{Storage: s}
 
+	retrieveService := operation.RetrieveService{
+		BaseURL: opt.BaseURL,
+		Storage: s,
+	}
+
 	router.Method(http.MethodPost, "/",
-		logged(compressed((&operation.Shorten{
+		authenticated((compressed((&operation.Shorten{
 			Log:     log,
 			Service: shortener,
-		}))))
+		})))))
 
 	router.Method(http.MethodPost, "/api/shorten",
-		logged(compressed((&operation.ShortenFromJSON{
+		authenticated((compressed((&operation.ShortenFromJSON{
 			Log:     log,
 			Service: shortener,
-		}))))
+		})))))
 
 	router.Method(http.MethodPost, "/api/shorten/batch",
-		logged(compressed((&operation.ShortenBatch{
+		authenticated((compressed((&operation.ShortenBatch{
 			Log:     log,
 			Service: shortener,
+		})))))
+
+	router.Method(http.MethodGet, "/api/user/urls",
+		authorised(logged(compressed(&operation.GetUserURLs{
+			Log:     log,
+			Service: retrieveService,
 		}))))
 
 	router.Method(http.MethodGet, "/{short}",
-		logged(compressed((&operation.Expand{
+		authenticated((compressed((&operation.Expand{
 			Log:     log,
 			Service: expander,
-		}))))
+		})))))
 
 	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, Storage: s}))
 

@@ -28,9 +28,10 @@ func (w *jsonFileWriter) Close() error {
 }
 
 type fileEntry struct {
+	UUID        uint64 `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
-	UUID        uint64 `json:"uuid"`
+	CreatedBy   string `json:"created_by"`
 }
 
 func (w *jsonFileWriter) Write(row fileEntry) error {
@@ -58,8 +59,8 @@ func (r *jsonFileReader) Close() error {
 	return r.file.Close()
 }
 
-func (r *jsonFileReader) Read() (*URLEntry, error) {
-	var row URLEntry
+func (r *jsonFileReader) Read() (*fileEntry, error) {
+	var row fileEntry
 	if err := r.decoder.Decode(&row); err != nil {
 		return nil, err
 	}
@@ -94,13 +95,18 @@ func (s *FileStorage) Close() error {
 	return s.writer.Close()
 }
 
-func (s *FileStorage) Add(ctx context.Context, u URLEntry) error {
-	return s.writer.Write(fileEntry{UUID: s.idGen.Next(), ShortURL: u.ShortURL, OriginalURL: u.OriginalURL})
+func (s *FileStorage) Add(ctx context.Context, u URLEntry, userID string) error {
+	return s.writer.Write(fileEntry{
+		UUID:        s.idGen.Next(),
+		ShortURL:    u.ShortURL,
+		OriginalURL: u.OriginalURL,
+		CreatedBy:   userID,
+	})
 }
 
-func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry) error {
+func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry, userID string) error {
 	for _, u := range urls {
-		s.Add(ctx, u)
+		s.Add(ctx, u, userID)
 	}
 
 	return nil
@@ -113,7 +119,7 @@ func (s *FileStorage) GetOriginal(ctx context.Context, shortURL string) (string,
 	}
 	defer reader.Close()
 
-	entry, err := reader.find(func(entry *URLEntry) bool { return entry.ShortURL == shortURL })
+	entry, err := reader.find(func(entry *fileEntry) bool { return entry.ShortURL == shortURL })
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +134,7 @@ func (s *FileStorage) GetShort(ctx context.Context, origURL string) (string, err
 	}
 	defer reader.Close()
 
-	entry, err := reader.find(func(entry *URLEntry) bool { return entry.OriginalURL == origURL })
+	entry, err := reader.find(func(entry *fileEntry) bool { return entry.OriginalURL == origURL })
 	if err != nil {
 		return "", err
 	}
@@ -136,7 +142,32 @@ func (s *FileStorage) GetShort(ctx context.Context, origURL string) (string, err
 	return entry.ShortURL, nil
 }
 
-func (r *jsonFileReader) find(cond func(entry *URLEntry) bool) (*URLEntry, error) {
+func (s *FileStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
+	reader, err := newFileReader(s.fname)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	var urls []URLEntry
+	for {
+		entry, err := reader.Read()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("file: %w", err)
+		}
+
+		if entry.CreatedBy == userID {
+			urls = append(urls, URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL})
+		}
+	}
+
+	return urls, nil
+}
+
+func (r *jsonFileReader) find(cond func(entry *fileEntry) bool) (*fileEntry, error) {
 	for {
 		entry, err := r.Read()
 		if err != nil {
