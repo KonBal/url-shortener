@@ -32,6 +32,7 @@ type fileEntry struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	CreatedBy   string `json:"created_by"`
+	Deleted     bool   `json:"deleted,omitempty"`
 }
 
 func (w *jsonFileWriter) Write(row fileEntry) error {
@@ -112,34 +113,34 @@ func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry, userID strin
 	return nil
 }
 
-func (s *FileStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
+func (s *FileStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer reader.Close()
 
 	entry, err := reader.find(func(entry *fileEntry) bool { return entry.ShortURL == shortURL })
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return entry.OriginalURL, nil
+	return &URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL, Deleted: entry.Deleted}, nil
 }
 
-func (s *FileStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+func (s *FileStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntry, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer reader.Close()
 
 	entry, err := reader.find(func(entry *fileEntry) bool { return entry.OriginalURL == origURL })
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return entry.ShortURL, nil
+	return &URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL, Deleted: entry.Deleted}, nil
 }
 
 func (s *FileStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
@@ -160,7 +161,7 @@ func (s *FileStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]UR
 		}
 
 		if entry.CreatedBy == userID {
-			urls = append(urls, URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL})
+			urls = append(urls, URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL, Deleted: entry.Deleted})
 		}
 	}
 
@@ -181,6 +182,48 @@ func (r *jsonFileReader) find(cond func(entry *fileEntry) bool) (*fileEntry, err
 			return entry, nil
 		}
 	}
+}
+
+func (s *FileStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) error {
+	data, err := os.ReadFile(s.fname)
+	if err != nil {
+		return fmt.Errorf("file: cannot read file: %w", err)
+	}
+
+	var entries []fileEntry
+
+	err = json.Unmarshal(data, &entries)
+	if err != nil {
+		return fmt.Errorf("file: cannot unmarshal data: %w", err)
+	}
+
+	find := func(userID, url string) (*fileEntry, bool) {
+		for _, u := range entries {
+			if u.CreatedBy == userID && u.ShortURL == url {
+				return &u, true
+			}
+		}
+
+		return nil, false
+	}
+
+	for _, u := range urls {
+		entry, ok := find(u.UserID, u.ShortURL)
+		if ok {
+			entry.Deleted = true
+		}
+	}
+
+	json, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("file: cannot marshal data: %w", err)
+	}
+
+	if err := os.WriteFile(s.fname, json, 0666); err != nil {
+		return fmt.Errorf("file: cannot write data: %w", err)
+	}
+
+	return nil
 }
 
 func (s *FileStorage) Ping(ctx context.Context) error {

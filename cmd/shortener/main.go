@@ -39,12 +39,6 @@ func main() {
 	}
 }
 
-type keyStore struct{}
-
-func (keyStore) Secret() []byte {
-	return []byte("my_secret_key")
-}
-
 func run(log *logger.Logger) error {
 	opt := config.Get()
 
@@ -84,55 +78,58 @@ func run(log *logger.Logger) error {
 	}
 
 	userStore := user.NewStore(randGen)
-	authenticator := user.Authenticator{SecretKeyStore: keyStore{}}
+	authenticator := user.Authenticator{
+		SecretKeyStore: user.NewKeyStore(func() []byte { return []byte("my_secret_key") }),
+	}
 
 	logged := LoggingHandler(log)
 	compressed := ZipHandler()
 	authorised := AuthHandler(authenticator)
 	authenticated := AuthenticationHandler(authenticator, userStore)
 
-	shortener := operation.Shortener{
+	shortURLService := operation.ShortURLService{
 		BaseURL:    opt.BaseURL,
 		Encoder:    base62.Encoder{},
 		Storage:    s,
 		Uint64Rand: randGen,
 	}
-
-	expander := operation.Expander{Storage: s}
-
-	retrieveService := operation.RetrieveService{
-		BaseURL: opt.BaseURL,
-		Storage: s,
-	}
+	deletionWorker := operation.NewDeletionWorker(s, log, 1024, 10)
 
 	router.Method(http.MethodPost, "/",
 		authenticated((compressed((&operation.Shorten{
 			Log:     log,
-			Service: shortener,
+			Service: shortURLService,
 		})))))
 
 	router.Method(http.MethodPost, "/api/shorten",
 		authenticated((compressed((&operation.ShortenFromJSON{
 			Log:     log,
-			Service: shortener,
+			Service: shortURLService,
 		})))))
 
 	router.Method(http.MethodPost, "/api/shorten/batch",
 		authenticated((compressed((&operation.ShortenBatch{
 			Log:     log,
-			Service: shortener,
+			Service: shortURLService,
 		})))))
 
 	router.Method(http.MethodGet, "/api/user/urls",
 		authorised(logged(compressed(&operation.GetUserURLs{
 			Log:     log,
-			Service: retrieveService,
+			Service: shortURLService,
 		}))))
+
+	router.Method(http.MethodDelete, "/api/user/urls",
+		authenticated(logged(&operation.Delete{
+			Log:     log,
+			Service: deletionWorker,
+		})),
+	)
 
 	router.Method(http.MethodGet, "/{short}",
 		authenticated((compressed((&operation.Expand{
 			Log:     log,
-			Service: expander,
+			Service: shortURLService,
 		})))))
 
 	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, Storage: s}))

@@ -28,6 +28,10 @@ func (o *Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		o.Log.RequestError(req, err)
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
+	case errors.Is(err, ErrDeleted):
+		o.Log.RequestError(req, err)
+		http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
+		return
 	case err != nil:
 		o.Log.RequestError(req, err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -39,12 +43,8 @@ func (o *Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-type Expander struct {
-	Storage storage.Storage
-}
-
-func (r Expander) Expand(ctx context.Context, shortened string) (string, error) {
-	url, err := r.Storage.GetOriginal(ctx, shortened)
+func (s ShortURLService) Expand(ctx context.Context, shortened string) (string, error) {
+	u, err := s.Storage.GetByShort(ctx, shortened)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
 		return "", notFoundError(fmt.Sprintf("original URL not found for shortened %s", shortened))
@@ -52,5 +52,9 @@ func (r Expander) Expand(ctx context.Context, shortened string) (string, error) 
 		return "", fmt.Errorf("expand: failed to get original URL: %w", err)
 	}
 
-	return url, nil
+	if u.Deleted {
+		return "", deletedError(fmt.Sprintf("url for shortened %s is already deleted", shortened))
+	}
+
+	return u.OriginalURL, nil
 }

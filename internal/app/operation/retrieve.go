@@ -8,7 +8,6 @@ import (
 
 	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/session"
-	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
 type GetUserURLs struct {
@@ -45,14 +44,7 @@ type SavedURL struct {
 	OriginalURL string `json:"original_url"`
 }
 
-type RetrieveService struct {
-	BaseURL string
-	Storage interface {
-		GetURLsCreatedBy(ctx context.Context, userID string) ([]storage.URLEntry, error)
-	}
-}
-
-func (s RetrieveService) GetUserURLs(ctx context.Context, userID string) ([]SavedURL, error) {
+func (s ShortURLService) GetUserURLs(ctx context.Context, userID string) ([]SavedURL, error) {
 	urls, err := s.Storage.GetURLsCreatedBy(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user urls: %w", err)
@@ -60,10 +52,12 @@ func (s RetrieveService) GetUserURLs(ctx context.Context, userID string) ([]Save
 
 	var res []SavedURL
 	for _, u := range urls {
-		res = append(res, SavedURL{
-			ShortURL:    resolveURL(s.BaseURL, u.ShortURL),
-			OriginalURL: u.OriginalURL,
-		})
+		if !u.Deleted {
+			res = append(res, SavedURL{
+				ShortURL:    resolveURL(s.BaseURL, u.ShortURL),
+				OriginalURL: u.OriginalURL,
+			})
+		}
 	}
 
 	return res, nil
