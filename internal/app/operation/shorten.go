@@ -134,29 +134,18 @@ func (o *ShortenBatch) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-type Shortener struct {
-	BaseURL string
-	Encoder interface {
-		Encode(v uint64) string
-	}
-	Storage    storage.Storage
-	Uint64Rand interface {
-		Next() uint64
-	}
-}
-
-func (s Shortener) Shorten(ctx context.Context, userID string, url string) (string, error) {
+func (s ShortURLService) Shorten(ctx context.Context, userID string, url string) (string, error) {
 	code := s.getEncoded()
 
 	err := s.Storage.Add(ctx, storage.URLEntry{ShortURL: code, OriginalURL: url}, userID)
 	switch {
 	case errors.Is(err, storage.ErrNotUnique):
-		sh, err := s.Storage.GetShort(ctx, url)
+		sh, err := s.Storage.GetByOriginal(ctx, url)
 		if err != nil {
 			return "", err
 		}
 
-		return "", &notUniqueError{ShortURL: resolveURL(s.BaseURL, sh)}
+		return "", &notUniqueError{ShortURL: resolveURL(s.BaseURL, sh.ShortURL)}
 	case err != nil:
 		return "", fmt.Errorf("shorten: failed to save url: %w", err)
 	}
@@ -173,7 +162,7 @@ type CorrelatedShortURL struct {
 	ShortURL      string `json:"short_url"`
 }
 
-func (s Shortener) ShortenMany(ctx context.Context, userID string, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
+func (s ShortURLService) ShortenMany(ctx context.Context, userID string, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
 	shorts := make([]CorrelatedShortURL, len(orig))
 	entries := make([]storage.URLEntry, len(orig))
 
@@ -193,7 +182,7 @@ func (s Shortener) ShortenMany(ctx context.Context, userID string, orig []Correl
 	return shorts, nil
 }
 
-func (s Shortener) getEncoded() string {
+func (s ShortURLService) getEncoded() string {
 	return s.Encoder.Encode(s.Uint64Rand.Next())
 }
 

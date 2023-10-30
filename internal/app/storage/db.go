@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -61,46 +62,46 @@ func (s *DBStorage) AddMany(ctx context.Context, urls []URLEntry, userID string)
 	return tx.Commit()
 }
 
-func (s *DBStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
+func (s *DBStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry, error) {
 	const query = `
-		select u.original_url
+		select u.original_url, u.short_url, u.deleted
 		from urls as u
 		where u.short_url = $1;
 	`
 
-	var url string
+	var u URLEntry
 
-	err := s.db.QueryRowContext(ctx, query, shortURL).Scan(&url)
+	err := s.db.QueryRowContext(ctx, query, shortURL).Scan(&u.OriginalURL, &u.ShortURL, &u.Deleted)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return "", ErrNotFound
+		return nil, ErrNotFound
 	case err != nil:
-		return "", fmt.Errorf("db: %w", err)
+		return nil, fmt.Errorf("db: %w", err)
 	}
 
-	return url, nil
+	return &u, nil
 }
 
-func (s *DBStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+func (s *DBStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntry, error) {
 	const query = `
-		select u.short_url
+		select u.original_url, u.short_url, u.deleted
 		from urls as u
 		where u.original_url = $1;
 	`
 
-	var url string
+	var u URLEntry
 
-	err := s.db.QueryRowContext(ctx, query, origURL).Scan(&url)
+	err := s.db.QueryRowContext(ctx, query, origURL).Scan(&u.OriginalURL, &u.ShortURL, &u.Deleted)
 	if err != nil {
-		return "", fmt.Errorf("db: %w", err)
+		return nil, fmt.Errorf("db: %w", err)
 	}
 
-	return url, nil
+	return &u, nil
 }
 
 func (s *DBStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
 	const query = `
-		select u.short_url, u.original_url
+		select u.short_url, u.original_url, u.deleted
 		from urls as u
 		where u.created_by = $1;
 	`
@@ -115,7 +116,7 @@ func (s *DBStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLE
 
 	for rows.Next() && err == nil {
 		var u URLEntry
-		err = rows.Scan(&u.ShortURL, &u.OriginalURL)
+		err = rows.Scan(&u.ShortURL, &u.OriginalURL, &u.Deleted)
 		urls = append(urls, u)
 	}
 
@@ -131,6 +132,29 @@ func (s *DBStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLE
 	}
 
 	return urls, nil
+}
+
+func (s *DBStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) error {
+	var conditions []string
+	var args []any
+
+	for i, u := range urls {
+		base := i * 2
+		c := fmt.Sprintf("(u.created_by = $%d and u.short_url = $%d)", base+1, base+2)
+		conditions = append(conditions, c)
+		args = append(args, u.UserID, u.ShortURL)
+	}
+
+	query := `
+		update urls as u
+		set deleted = true
+		where ` + strings.Join(conditions, " or ") + ";"
+
+	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("db: %w", err)
+	}
+
+	return nil
 }
 
 func (s *DBStorage) Bootstrap(migrationFiles fs.FS) error {

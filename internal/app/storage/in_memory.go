@@ -10,6 +10,7 @@ type InMemoryStorage map[string]inMemoryEntry
 type inMemoryEntry struct {
 	OriginalURL string
 	CreatedBy   string
+	Deleted     bool
 }
 
 var storage InMemoryStorage
@@ -39,28 +40,28 @@ func (s InMemoryStorage) AddMany(ctx context.Context, urls []URLEntry, userID st
 	return nil
 }
 
-func (s InMemoryStorage) GetOriginal(ctx context.Context, shortURL string) (string, error) {
+func (s InMemoryStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry, error) {
 	lock.RLock()
 	v, ok := storage[shortURL]
 	lock.RUnlock()
 
 	if !ok {
-		return "", ErrNotFound
+		return nil, ErrNotFound
 	}
 
-	return v.OriginalURL, nil
+	return &URLEntry{ShortURL: shortURL, OriginalURL: v.OriginalURL, Deleted: v.Deleted}, nil
 }
 
-func (s InMemoryStorage) GetShort(ctx context.Context, origURL string) (string, error) {
+func (s InMemoryStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntry, error) {
 	lock.RLock()
 	for k, v := range storage {
 		if v.OriginalURL == origURL {
-			return k, nil
+			return &URLEntry{ShortURL: k, OriginalURL: origURL, Deleted: v.Deleted}, nil
 		}
 	}
 	lock.RUnlock()
 
-	return "", ErrNotFound
+	return nil, ErrNotFound
 }
 
 func (s InMemoryStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
@@ -69,12 +70,26 @@ func (s InMemoryStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([
 	lock.RLock()
 	for k, v := range storage {
 		if v.CreatedBy == userID {
-			urls = append(urls, URLEntry{ShortURL: k, OriginalURL: v.OriginalURL})
+			urls = append(urls, URLEntry{ShortURL: k, OriginalURL: v.OriginalURL, Deleted: v.Deleted})
 		}
 	}
 	lock.RUnlock()
 
 	return urls, nil
+}
+
+func (s InMemoryStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) error {
+	lock.Lock()
+	for _, u := range urls {
+		entry, ok := s[u.ShortURL]
+		if ok && entry.CreatedBy == u.UserID {
+			entry.Deleted = true
+			s[u.ShortURL] = entry
+		}
+	}
+	lock.Unlock()
+
+	return nil
 }
 
 func (s InMemoryStorage) Ping(ctx context.Context) error {

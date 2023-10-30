@@ -99,3 +99,15 @@ func initCipher(key []byte) (cipher.AEAD, []byte, error) {
 
 	return aesgcm, nonce, nil
 }
+
+type KeyStore struct {
+	keyFunc func() []byte
+}
+
+func NewKeyStore(f func() []byte) KeyStore {
+	return KeyStore{keyFunc: f}
+}
+
+func (s KeyStore) Secret() []byte {
+	return s.keyFunc()
+}
