@@ -24,8 +24,15 @@ func NewInMemory() InMemoryStorage {
 
 func (s InMemoryStorage) Add(ctx context.Context, u URLEntry, userID string) error {
 	lock.Lock()
+	defer lock.Unlock()
+
+	for _, v := range storage {
+		if v.OriginalURL == u.OriginalURL {
+			return ErrNotUnique
+		}
+	}
+
 	storage[u.ShortURL] = inMemoryEntry{OriginalURL: u.OriginalURL, CreatedBy: userID}
-	lock.Unlock()
 
 	return nil
 }
@@ -33,7 +40,7 @@ func (s InMemoryStorage) Add(ctx context.Context, u URLEntry, userID string) err
 func (s InMemoryStorage) AddMany(ctx context.Context, urls []URLEntry, userID string) error {
 	lock.Lock()
 	for _, u := range urls {
-		storage[u.ShortURL] = inMemoryEntry{OriginalURL: u.OriginalURL, CreatedBy: userID}
+		storage[u.ShortURL] = inMemoryEntry{OriginalURL: u.OriginalURL, CreatedBy: userID, Deleted: u.Deleted}
 	}
 	lock.Unlock()
 

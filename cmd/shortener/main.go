@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -133,6 +134,11 @@ func run(log *logger.Logger) error {
 		})))))
 
 	router.Method(http.MethodGet, "/ping", logged(&operation.Ping{Log: log, Storage: s}))
+
+	router.HandleFunc("/debug/pprof/", pprof.Index)
+	router.HandleFunc("/debug/pprof/{action}", pprof.Index)
+	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
 
 	return http.ListenAndServe(opt.ServerAddress, router)
 }
