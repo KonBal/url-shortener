@@ -25,6 +25,10 @@ func (s Authenticator) Authenticate(token string) (*User, error) {
 	secret := sha256.Sum256(s.SecretKeyStore.Secret())
 	key := secret[:]
 
+	if len(data) < signatureSize {
+		return nil, ErrAuthenticationFailed
+	}
+
 	encrSign := data[len(data)-signatureSize:]
 	id := data[0 : len(data)-signatureSize]
 

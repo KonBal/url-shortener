@@ -50,7 +50,7 @@ func (s ShortURLService) GetUserURLs(ctx context.Context, userID string) ([]Save
 		return nil, fmt.Errorf("failed to get user urls: %w", err)
 	}
 
-	var res []SavedURL
+	res := make([]SavedURL, 0, len(urls))
 	for _, u := range urls {
 		if !u.Deleted {
 			res = append(res, SavedURL{
