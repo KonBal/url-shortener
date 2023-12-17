@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Represents expand operation request.
 type Expand struct {
 	Log     *logger.Logger
 	Service interface {
@@ -18,6 +19,7 @@ type Expand struct {
 	}
 }
 
+// ServeHTTP hangles expand request.
 func (o *Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	shortened := chi.URLParam(req, "short")
 	ctx := req.Context()
@@ -43,6 +45,7 @@ func (o *Expand) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+// Expand returns original URL saved for given shortened one.
 func (s ShortURLService) Expand(ctx context.Context, shortened string) (string, error) {
 	u, err := s.Storage.GetByShort(ctx, shortened)
 	switch {

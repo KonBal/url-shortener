@@ -10,6 +10,7 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/session"
 )
 
+// Represents operation to get urls of user.
 type GetUserURLs struct {
 	Log     *logger.Logger
 	Service interface {
@@ -17,6 +18,7 @@ type GetUserURLs struct {
 	}
 }
 
+// ServeHTTP handles operation to get urls of user.
 func (o *GetUserURLs) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	s := session.FromContext(ctx)
@@ -39,11 +41,13 @@ func (o *GetUserURLs) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Represents urls saved in the system.
 type SavedURL struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// GetUserURLs returns URLs add by the user.
 func (s ShortURLService) GetUserURLs(ctx context.Context, userID string) ([]SavedURL, error) {
 	urls, err := s.Storage.GetURLsCreatedBy(ctx, userID)
 	if err != nil {

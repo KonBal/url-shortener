@@ -1,6 +1,7 @@
 package user
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -167,4 +168,28 @@ func TestSignAndAuth(t *testing.T) {
 			require.Equal(t, tt.userID, u.UserID)
 		})
 	}
+}
+
+func ExampleAuthenticator_Authenticate() {
+	auth := Authenticator{SecretKeyStore: NewKeyStore(func() []byte { return []byte("key") })}
+
+	user, err := auth.Authenticate("7573657231323334b4879144b509c9c892ab48e0041d7e095c0e4efcc659654dd83e8fb1fe7cf88231089d7c4ed5882fef0c6b5c83673f7b")
+	if err != nil {
+		fmt.Printf("failed to authenticate: %v", err)
+		return
+	}
+
+	fmt.Printf("token conteined userID: %s", user.UserID)
+}
+
+func ExampleAuthenticator_Sign() {
+	auth := Authenticator{SecretKeyStore: NewKeyStore(func() []byte { return []byte("key") })}
+
+	signed, err := auth.Sign("user_id=1234")
+	if err != nil {
+		fmt.Printf("failed to sign: %v", err)
+		return
+	}
+
+	fmt.Printf("signed token: %s", signed)
 }

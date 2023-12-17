@@ -10,11 +10,13 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
+// Represents ping request.
 type Ping struct {
 	Log     *logger.Logger
 	Storage storage.Storage
 }
 
+// ServeHTTP hndles ping request.
 func (o *Ping) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx, cancel := context.WithTimeout(req.Context(), 1*time.Second)
 	defer cancel()

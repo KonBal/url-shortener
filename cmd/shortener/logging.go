@@ -12,6 +12,7 @@ type logHandler struct {
 	next http.Handler
 }
 
+// Created logging handler.
 func LoggingHandler(logger *logger.Logger) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return &logHandler{
@@ -21,6 +22,7 @@ func LoggingHandler(logger *logger.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// ServeHTTP adds logging to pipeline.
 func (h *logHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	responseData := &responseData{}
 	rw := responseWriter{ResponseWriter: w, responseData: responseData}
@@ -48,12 +50,14 @@ type responseWriter struct {
 	responseData *responseData
 }
 
+// Write writes to response.
 func (r *responseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
 	return size, err
 }
 
+// WriteHeader writes header to response.
 func (r *responseWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode

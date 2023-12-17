@@ -18,6 +18,7 @@ type authHandler struct {
 	authenticator authenticator
 }
 
+// AuthHandler create AuthHandler.
 func AuthHandler(a authenticator) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return &authHandler{
@@ -29,6 +30,7 @@ func AuthHandler(a authenticator) func(http.Handler) http.Handler {
 
 const authCookieKey = "user_id"
 
+// ServeHTTP adds authentication to the pipeline.
 func (h *authHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c, err := req.Cookie(authCookieKey)
 	if err != nil {
@@ -67,6 +69,7 @@ type authenticationHandler struct {
 	userStore     userStore
 }
 
+// AuthenticationHandler creates handler that adds authentication to pipeline.
 func AuthenticationHandler(a authenticator, s userStore) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return &authenticationHandler{
@@ -77,6 +80,7 @@ func AuthenticationHandler(a authenticator, s userStore) func(http.Handler) http
 	}
 }
 
+// ServeHTTP adds authentication to the pipeline. Creates new user if user is unauthenticated.
 func (h *authenticationHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var u *user.User
 	auth := true
