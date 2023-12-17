@@ -12,7 +12,7 @@ import (
 
 	"github.com/KonBal/url-shortener/internal/app/base62"
 	"github.com/KonBal/url-shortener/internal/app/config"
-	idgenerator "github.com/KonBal/url-shortener/internal/app/idgen"
+	"github.com/KonBal/url-shortener/internal/app/idgen"
 	"github.com/KonBal/url-shortener/internal/app/logger"
 	"github.com/KonBal/url-shortener/internal/app/operation"
 	"github.com/KonBal/url-shortener/internal/app/storage"
@@ -45,7 +45,7 @@ func run(log *logger.Logger) error {
 
 	router := chi.NewRouter()
 
-	randGen := idgenerator.New()
+	randGen := idgen.New()
 
 	var s storage.Storage
 

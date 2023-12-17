@@ -12,6 +12,7 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
+// Represents delete handler.
 type Delete struct {
 	Log     *logger.Logger
 	Service interface {
@@ -19,6 +20,7 @@ type Delete struct {
 	}
 }
 
+// ServeHTTP handles the delete operation.
 func (o *Delete) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var urls []string
 
@@ -40,6 +42,7 @@ func (o *Delete) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// Worker that recieves entries through a channel and runs deletion operation periodically.
 type DeletionWorker struct {
 	entriesCh  chan storage.EntryToDelete
 	workPeriod time.Duration
@@ -47,6 +50,7 @@ type DeletionWorker struct {
 	log        *logger.Logger
 }
 
+// NewDeletionWorker returns deletion worker.
 func NewDeletionWorker(s storage.Storage, log *logger.Logger,
 	bufSize, workPeriodSec int64) *DeletionWorker {
 	w := &DeletionWorker{
@@ -61,6 +65,7 @@ func NewDeletionWorker(s storage.Storage, log *logger.Logger,
 	return w
 }
 
+// Delete adds the entry url to the channel of objects to be removed.
 func (w *DeletionWorker) Delete(ctx context.Context, userID string, urls []string) error {
 	go func() {
 		for _, u := range urls {
@@ -71,6 +76,7 @@ func (w *DeletionWorker) Delete(ctx context.Context, userID string, urls []strin
 	return nil
 }
 
+// RunDeletion runs a job to delete entries marked for deletion when the channel if full or periodically.
 func (w *DeletionWorker) RunDeletion() {
 	ticker := time.NewTicker(w.workPeriod)
 

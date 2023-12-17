@@ -13,14 +13,17 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+// DB.
 type DBStorage struct {
 	db *sql.DB
 }
 
+// NewDBStorage returns new DB storage.
 func NewDBStorage(db *sql.DB) *DBStorage {
 	return &DBStorage{db: db}
 }
 
+// Add saves entry to DB.
 func (s *DBStorage) Add(ctx context.Context, u URLEntry, userID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`insert into urls(short_url, original_url, created_by) values ($1, $2, $3)`,
@@ -39,6 +42,7 @@ func (s *DBStorage) Add(ctx context.Context, u URLEntry, userID string) error {
 	return nil
 }
 
+// AddMany saves several entries to DB.
 func (s *DBStorage) AddMany(ctx context.Context, urls []URLEntry, userID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -62,6 +66,7 @@ func (s *DBStorage) AddMany(ctx context.Context, urls []URLEntry, userID string)
 	return tx.Commit()
 }
 
+// GetByShort retrieves entry by short url.
 func (s *DBStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry, error) {
 	const query = `
 		select u.original_url, u.short_url, u.deleted
@@ -82,6 +87,7 @@ func (s *DBStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry,
 	return &u, nil
 }
 
+// GetByOriginal retrieves entry by original url.
 func (s *DBStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntry, error) {
 	const query = `
 		select u.original_url, u.short_url, u.deleted
@@ -99,6 +105,7 @@ func (s *DBStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntr
 	return &u, nil
 }
 
+// GetURLsCreatedBy retrieves entries added by user.
 func (s *DBStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
 	const query = `
 		select u.short_url, u.original_url, u.deleted
@@ -134,6 +141,7 @@ func (s *DBStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLE
 	return urls, nil
 }
 
+// MarkDeleted sets deleted flag to the entries in DB.
 func (s *DBStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) error {
 	var conditions []string
 	var args []any
@@ -157,6 +165,7 @@ func (s *DBStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) erro
 	return nil
 }
 
+// Bootstrap applies migrations.
 func (s *DBStorage) Bootstrap(migrationFiles fs.FS) error {
 	if err := applyMigrations(s.db, migrationFiles); err != nil {
 		return fmt.Errorf("db: %w", err)
@@ -178,6 +187,7 @@ func applyMigrations(db *sql.DB, fsys fs.FS) error {
 	return nil
 }
 
+// Ping erifies a connection to the database is still alive, establishing a connection if necessary.
 func (s *DBStorage) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }

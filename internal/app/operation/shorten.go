@@ -14,6 +14,7 @@ import (
 	"github.com/KonBal/url-shortener/internal/app/storage"
 )
 
+// Represents shorten operation.
 type Shorten struct {
 	Log     *logger.Logger
 	Service interface {
@@ -21,6 +22,7 @@ type Shorten struct {
 	}
 }
 
+// ServeHTTP handles shorten operation.
 func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -52,6 +54,7 @@ func (o *Shorten) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(short))
 }
 
+// Represents operation to shorten url recieved in JSON.
 type ShortenFromJSON struct {
 	Log     *logger.Logger
 	Service interface {
@@ -59,6 +62,7 @@ type ShortenFromJSON struct {
 	}
 }
 
+// ServeHTTP handles operation to shorten url recieved in JSON.
 func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var body struct {
 		URL string `json:"url"`
@@ -101,6 +105,7 @@ func (o *ShortenFromJSON) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Represents operation to shorten multiple urls at once.
 type ShortenBatch struct {
 	Log     *logger.Logger
 	Service interface {
@@ -108,6 +113,7 @@ type ShortenBatch struct {
 	}
 }
 
+// ServeHTTP handles operation to shorten multiple urls at once.
 func (o *ShortenBatch) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var urls []CorrelatedOrigURL
 
@@ -134,6 +140,7 @@ func (o *ShortenBatch) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Shorten computes a shortened URL for a given URL and saves both to the storage.
 func (s ShortURLService) Shorten(ctx context.Context, userID string, url string) (string, error) {
 	code := s.getEncoded()
 
@@ -153,15 +160,19 @@ func (s ShortURLService) Shorten(ctx context.Context, userID string, url string)
 	return resolveURL(s.BaseURL, code), nil
 }
 
+// Input type for original url.
 type CorrelatedOrigURL struct {
 	CorrelationID string `json:"correlation_id"`
 	OrigURL       string `json:"original_url"`
 }
+
+// Result type for shortened url.
 type CorrelatedShortURL struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
 }
 
+// ShortenMany computes shortened URLs for given URLs and saves all to the storage.
 func (s ShortURLService) ShortenMany(ctx context.Context, userID string, orig []CorrelatedOrigURL) ([]CorrelatedShortURL, error) {
 	shorts := make([]CorrelatedShortURL, len(orig))
 	entries := make([]storage.URLEntry, len(orig))

@@ -19,14 +19,17 @@ func newCompressWriter(w http.ResponseWriter) *compressWriter {
 	}
 }
 
+// Returns header.
 func (c *compressWriter) Header() http.Header {
 	return c.w.Header()
 }
 
+// Write writes to writer.
 func (c *compressWriter) Write(p []byte) (int, error) {
 	return c.zw.Write(p)
 }
 
+// WriteHeader writes header to writer.
 func (c *compressWriter) WriteHeader(statusCode int) {
 	if statusCode < 300 {
 		c.w.Header().Set("Content-Encoding", "gzip")
@@ -34,6 +37,7 @@ func (c *compressWriter) WriteHeader(statusCode int) {
 	c.w.WriteHeader(statusCode)
 }
 
+// Close closes zip writer.
 func (c *compressWriter) Close() error {
 	return c.zw.Close()
 }
@@ -55,10 +59,12 @@ func newCompressReader(r io.ReadCloser) (*compressReader, error) {
 	}, nil
 }
 
+// Read reads from zip reader.
 func (c compressReader) Read(p []byte) (n int, err error) {
 	return c.zr.Read(p)
 }
 
+// Close closes zip reader.
 func (c *compressReader) Close() error {
 	if err := c.r.Close(); err != nil {
 		return err
@@ -70,6 +76,7 @@ type zipHandler struct {
 	next http.Handler
 }
 
+// Creates new zip handler.
 func ZipHandler() func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return &zipHandler{
@@ -78,6 +85,7 @@ func ZipHandler() func(http.Handler) http.Handler {
 	}
 }
 
+// ServeHTTP add zip to pipeline.
 func (h *zipHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ow := w
 

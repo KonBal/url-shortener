@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// Configuration of the app.
 type Options struct {
 	BaseURL            string `env:"BASE_URL"`
 	DBConnectionString string `env:"DATABASE_DSN"`
@@ -14,6 +15,7 @@ type Options struct {
 
 var opt Options
 
+// Parse parses the options from command line or environment variables.
 func Parse() {
 	flag.StringVar(&opt.BaseURL, "b", "localhost:8080", "address of short url host")
 	flag.StringVar(&opt.DBConnectionString, "d", "", "db connection string")
@@ -39,6 +41,7 @@ func Parse() {
 	}
 }
 
+// Get returns options.
 func Get() Options {
 	return opt
 }

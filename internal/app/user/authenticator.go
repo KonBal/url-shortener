@@ -10,12 +10,16 @@ import (
 	"fmt"
 )
 
+// Authenticates user.
 type Authenticator struct {
 	SecretKeyStore interface{ Secret() []byte }
 }
 
+// Error when authentication is failed.
 var ErrAuthenticationFailed = errors.New("authenticaion failed")
 
+// Authenticate comfirms the identity of a user given a signed auth token.
+// Returns ErrAuthenticationFailed error in case of failure.
 func (s Authenticator) Authenticate(token string) (*User, error) {
 	data, err := hex.DecodeString(token)
 	if err != nil {
@@ -48,6 +52,7 @@ func (s Authenticator) Authenticate(token string) (*User, error) {
 	return nil, ErrAuthenticationFailed
 }
 
+// Sign cryptographically signs the given token.
 func (s Authenticator) Sign(token string) (string, error) {
 	data := []byte(token)
 
@@ -104,14 +109,17 @@ func initCipher(key []byte) (cipher.AEAD, []byte, error) {
 	return aesgcm, nonce, nil
 }
 
+// Stores key.
 type KeyStore struct {
 	keyFunc func() []byte
 }
 
+// NewKeyStore returns new key store.
 func NewKeyStore(f func() []byte) KeyStore {
 	return KeyStore{keyFunc: f}
 }
 
+// Secret returns key as byte slice.
 func (s KeyStore) Secret() []byte {
 	return s.keyFunc()
 }

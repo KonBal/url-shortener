@@ -23,6 +23,7 @@ func newFileWriter(fname string) (*jsonFileWriter, error) {
 	return &jsonFileWriter{file: file, encoder: json.NewEncoder(file)}, nil
 }
 
+// Close closes file writer.
 func (w *jsonFileWriter) Close() error {
 	return w.file.Close()
 }
@@ -35,6 +36,7 @@ type fileEntry struct {
 	Deleted     bool   `json:"deleted,omitempty"`
 }
 
+// Wtire writes to json file writer.
 func (w *jsonFileWriter) Write(row fileEntry) error {
 	return w.encoder.Encode(row)
 }
@@ -56,10 +58,12 @@ func newFileReader(fname string) (*jsonFileReader, error) {
 	}, nil
 }
 
+// Close closes json file reader.
 func (r *jsonFileReader) Close() error {
 	return r.file.Close()
 }
 
+// Read reads from json file reader.
 func (r *jsonFileReader) Read() (*fileEntry, error) {
 	var row fileEntry
 	if err := r.decoder.Decode(&row); err != nil {
@@ -69,6 +73,7 @@ func (r *jsonFileReader) Read() (*fileEntry, error) {
 	return &row, nil
 }
 
+// File storage.
 type FileStorage struct {
 	fname  string
 	writer *jsonFileWriter
@@ -77,6 +82,7 @@ type FileStorage struct {
 	}
 }
 
+// NewFileStorage created new file storage.
 func NewFileStorage(fname string, idGen interface {
 	Next() uint64
 }) (*FileStorage, error) {
@@ -92,10 +98,12 @@ func NewFileStorage(fname string, idGen interface {
 	}, nil
 }
 
+// Close closes file writer.
 func (s *FileStorage) Close() error {
 	return s.writer.Close()
 }
 
+// Add adds new entry to the file.
 func (s *FileStorage) Add(ctx context.Context, u URLEntry, userID string) error {
 	return s.writer.Write(fileEntry{
 		UUID:        s.idGen.Next(),
@@ -105,6 +113,7 @@ func (s *FileStorage) Add(ctx context.Context, u URLEntry, userID string) error 
 	})
 }
 
+// AddMany adds new entries to the file.
 func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry, userID string) error {
 	for _, u := range urls {
 		s.Add(ctx, u, userID)
@@ -113,6 +122,7 @@ func (s *FileStorage) AddMany(ctx context.Context, urls []URLEntry, userID strin
 	return nil
 }
 
+// GetByShort retrieves a file entry by short url.
 func (s *FileStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntry, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
@@ -128,6 +138,7 @@ func (s *FileStorage) GetByShort(ctx context.Context, shortURL string) (*URLEntr
 	return &URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL, Deleted: entry.Deleted}, nil
 }
 
+// GetByOriginal retrieves a file entry by original url.
 func (s *FileStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEntry, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
@@ -143,6 +154,7 @@ func (s *FileStorage) GetByOriginal(ctx context.Context, origURL string) (*URLEn
 	return &URLEntry{ShortURL: entry.ShortURL, OriginalURL: entry.OriginalURL, Deleted: entry.Deleted}, nil
 }
 
+// GetURLsCreatedBy retrieves file entries added by user.
 func (s *FileStorage) GetURLsCreatedBy(ctx context.Context, userID string) ([]URLEntry, error) {
 	reader, err := newFileReader(s.fname)
 	if err != nil {
@@ -184,6 +196,7 @@ func (r *jsonFileReader) find(cond func(entry *fileEntry) bool) (*fileEntry, err
 	}
 }
 
+// MarkDeleted sets deleted flag for given urls.
 func (s *FileStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) error {
 	data, err := os.ReadFile(s.fname)
 	if err != nil {
@@ -226,6 +239,7 @@ func (s *FileStorage) MarkDeleted(ctx context.Context, urls ...EntryToDelete) er
 	return nil
 }
 
+// Ping always returns nil.
 func (s *FileStorage) Ping(ctx context.Context) error {
 	return nil
 }
